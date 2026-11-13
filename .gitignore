@@ -15,7 +15,6 @@ captures/
 .agent-request-logger/
 
 # Real-agent downloads and test artifacts
-e2e/.tools/
 test-results/
 .tmp/
 tmp/
@@ -31,3 +30,8 @@ npm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Development uses pnpm; avoid accidental competing lockfiles
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock

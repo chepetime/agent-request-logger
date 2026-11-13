@@ -11,31 +11,36 @@
     "bin/",
     "dist/",
     "LICENSE",
-    "NOTICE.md",
-    "AGENT_GUIDE.md"
+    "docs/agents.md"
   ],
   "engines": {
     "node": ">=22.15.0"
   },
   "scripts": {
-    "dev": "npm run build && node bin/agent-request-logger.js",
+    "dev": "pnpm build && node bin/agent-request-logger.js",
     "build": "node scripts/build.mjs",
     "start": "node bin/agent-request-logger.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests/unit tests/integration",
     "test:watch": "vitest",
-    "test:e2e": "npm run build && vitest run tests/e2e && node scripts/package-smoke.mjs",
-    "test:package": "npm run build && node scripts/package-smoke.mjs",
-    "prepack": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test && npm run test:package",
+    "test:e2e": "pnpm build && vitest run tests/e2e && node scripts/package-smoke.mjs",
+    "test:package": "pnpm build && node scripts/package-smoke.mjs",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm check",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:compat": "npm run build && tsx tests/compatibility/run.ts"
+    "test:compat": "pnpm build && tsx tests/compatibility/run.ts",
+    "lint": "biome check . --error-on-warnings",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.7",
     "@types/node": "^22",
     "tsx": "^4.19.4",
     "typescript": "^5.9.2",
@@ -48,5 +53,6 @@
   "homepage": "https://github.com/chepetime/agent-request-logger#readme",
   "bugs": {
     "url": "https://github.com/chepetime/agent-request-logger/issues"
-  }
+  },
+  "packageManager": "pnpm@11.28.9"
 }

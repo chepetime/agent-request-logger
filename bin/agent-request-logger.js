@@ -1,17 +1,19 @@
 #!/usr/bin/env node
-import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 
 try {
-  const { values } = parseArgs({ options: {
-    help: { type: "boolean", short: "h" },
-    version: { type: "boolean", short: "v" },
-    debug: { type: "boolean" },
-    force: { type: "boolean" },
-    port: { type: "string" },
-    "log-dir": { type: "string" },
-    "config-dir": { type: "string" },
-  }});
+  const { values } = parseArgs({
+    options: {
+      help: { type: "boolean", short: "h" },
+      version: { type: "boolean", short: "v" },
+      debug: { type: "boolean" },
+      force: { type: "boolean" },
+      port: { type: "string" },
+      "log-dir": { type: "string" },
+      "config-dir": { type: "string" },
+    },
+  });
   if (values.help) {
     console.log(`Usage: agent-request-logger [options]
 
@@ -42,7 +44,14 @@ Press Ctrl+C to stop.`);
     await main();
   }
 } catch (error) {
-  const { formatError } = await import("../dist/errors.js").catch(() => ({ formatError: error => error.message }));
-  console.error(formatError(error, process.env.REQUEST_LOGGER_DEBUG === "1" || process.argv.includes("--debug")));
+  const { formatError } = await import("../dist/errors.js").catch(() => ({
+    formatError: (error) => error.message,
+  }));
+  console.error(
+    formatError(
+      error,
+      process.env.REQUEST_LOGGER_DEBUG === "1" || process.argv.includes("--debug"),
+    ),
+  );
   process.exitCode = 1;
 }

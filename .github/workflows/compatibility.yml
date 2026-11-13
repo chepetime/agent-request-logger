@@ -1,21 +1,39 @@
 name: Real-agent compatibility
 on:
   workflow_dispatch:
+    inputs:
+      agent:
+        description: Agent to exercise against the local test provider
+        type: choice
+        default: all
+        options: [all, claude-code, codex, opencode, pi]
 permissions:
   contents: read
+concurrency:
+  group: compatibility-${{ github.ref }}-${{ inputs.agent }}
+  cancel-in-progress: true
 jobs:
   agents:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
         with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - uses: actions/cache@v4
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
         with:
-          path: .cache/agents
-          key: agents-${{ runner.os }}-${{ hashFiles('tests/compatibility/run.ts') }}
-      - run: npm run test:compat
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v6.1.1
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - name: Run selected compatibility checks
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          if [ "$AGENT" = all ]; then
+            pnpm test:compat
+          else
+            pnpm test:compat -- "$AGENT"
+          fi

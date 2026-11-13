@@ -1,43 +1,97 @@
-import { LoggerError, formatError } from "./errors.js";
 import fs from "node:fs/promises";
-import { locations, readPreference, writePreference } from "./preferences.js";
-import { choose } from "./wizard.js";
-import { resolveTarget, upstreamUrl } from "./targets.js";
+import type http from "node:http";
+import { formatError, LoggerError } from "./errors.js";
 import { createGateway } from "./gateway.js";
+import { type Locations, locations, readPreference, writePreference } from "./preferences.js";
+import { resolveTarget, type Target, upstreamUrl } from "./targets.js";
+import { choose } from "./wizard.js";
 
 export async function main(): Promise<void> {
   const port = Number(process.env.PORT || 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid port.");
   const paths = locations(process.env);
-  const force = process.argv.includes("--force");
-  if (force) await fs.rm(paths.preferenceFile, { force: true });
-  let choice = force ? undefined : await readPreference(paths.preferenceFile);
-  let target;
-  if (choice) {
-    try { target = resolveTarget(choice, port); }
-    catch (error) { console.warn(formatError(new LoggerError("SETUP_FAILED", "Saved setup could not be loaded; choose a setup again.", error))); }
-  }
-  if (!target) {
-    const selected = await choose(force || !!choice);
-    if (!selected) return;
-    choice = selected.choice;
-    target = resolveTarget(choice, port);
-    if (selected.remember) {
-      try { await writePreference(paths.preferenceFile, choice); }
-      catch (error) { console.warn(formatError(new LoggerError("PREFERENCES_FAILED", "Could not remember the setup.", error))); }
+  const target = await selectTarget(paths.preferenceFile, port, process.argv.includes("--force"));
+  if (!target) return;
+
+  const override = testUpstream();
+  const server = createGateway({
+    target,
+    directory: paths.logDir,
+    override,
+    onCapture: (file) => console.log(`Captured ${file}`),
+    onError: (error) => console.error(formatError(error, process.env.REQUEST_LOGGER_DEBUG === "1")),
+  });
+  await listen(server, port);
+  printInstructions(target, paths, port, override);
+}
+
+async function selectTarget(
+  preferenceFile: string,
+  port: number,
+  force: boolean,
+): Promise<Target | undefined> {
+  if (force) await fs.rm(preferenceFile, { force: true });
+  const saved = force ? undefined : await readPreference(preferenceFile);
+  if (saved) {
+    try {
+      return resolveTarget(saved, port);
+    } catch (error) {
+      console.warn(
+        formatError(
+          new LoggerError(
+            "SETUP_FAILED",
+            "Saved setup could not be loaded; choose a setup again.",
+            error,
+          ),
+        ),
+      );
     }
   }
-  const override = process.env.REQUEST_LOGGER_TEST_UPSTREAM ? upstreamUrl(process.env.REQUEST_LOGGER_TEST_UPSTREAM) : undefined;
-  if (override && override.pathname !== "/") throw new Error("Test upstream must be an origin without a path.");
-  const server = createGateway({ target, directory: paths.logDir, override,
-    onCapture: file => console.log(`Captured ${file}`),
-    onError: error => console.error(formatError(error, process.env.REQUEST_LOGGER_DEBUG === "1")),
-  });
+
+  const selected = await choose(force || !!saved);
+  if (!selected) return;
+  const target = resolveTarget(selected.choice, port);
+  if (selected.remember) {
+    try {
+      await writePreference(preferenceFile, selected.choice);
+    } catch (error) {
+      // Remembering is optional: an unwritable preference directory should not
+      // prevent logging with the setup the user just selected.
+      console.warn(
+        formatError(new LoggerError("PREFERENCES_FAILED", "Could not remember the setup.", error)),
+      );
+    }
+  }
+  return target;
+}
+
+function testUpstream(): URL | undefined {
+  const configured = process.env.REQUEST_LOGGER_TEST_UPSTREAM;
+  if (!configured) return;
+  const url = upstreamUrl(configured);
+  if (url.pathname !== "/") throw new Error("Test upstream must be an origin without a path.");
+  return url;
+}
+
+async function listen(server: http.Server, port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    server.once("error", error => reject(new LoggerError("LISTEN_FAILED", `Cannot listen on 127.0.0.1:${port}. Use --port to choose another port.`, error)));
+    server.once("error", (error) =>
+      reject(
+        new LoggerError(
+          "LISTEN_FAILED",
+          `Cannot listen on 127.0.0.1:${port}. Use --port to choose another port.`,
+          error,
+        ),
+      ),
+    );
     server.listen(port, "127.0.0.1", resolve);
   });
-  console.log(`\n${target.name}\nListening: http://localhost:${port}\nUpstream: ${target.upstream}\nCaptures: ${paths.logDir}`);
+}
+
+function printInstructions(target: Target, paths: Locations, port: number, override?: URL): void {
+  console.log(
+    `\n${target.name}\nListening: http://localhost:${port}\nUpstream: ${target.upstream}\nCaptures: ${paths.logDir}`,
+  );
   if (override) console.log(`TEST UPSTREAM OVERRIDE: ${override}`);
   for (const file of target.files) console.log(`\nMerge into ${file.path}:\n${file.content}`);
   console.log(`\nRun in another terminal:\n\n${target.command}\n`);
