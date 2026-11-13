@@ -275,9 +275,15 @@ async function run(choice: Choice): Promise<void> {
     if (agent === "opencode") {
       const dest = path.join(home, ".config/opencode/opencode.json");
       const config = JSON.parse(await fs.readFile(dest, "utf8"));
-      const model =
-        choice.provider === "anthropic" ? "anthropic/claude-sonnet-4-5" : "openai/gpt-4o";
-      await fs.writeFile(dest, JSON.stringify({ ...config, model, small_model: model }));
+      // Own the fake model metadata so a live provider catalogue cannot retire it.
+      const modelId = "logger-test-model";
+      const model = `${choice.provider}/${modelId}`;
+      config.model = model;
+      config.small_model = model;
+      config.provider[choice.provider].models = {
+        [modelId]: { name: "Local test model", limit: { context: 32000, output: 1024 } },
+      };
+      await fs.writeFile(dest, JSON.stringify(config));
     }
     const prompt = "Reply with a greeting.";
     const args =
@@ -315,6 +321,7 @@ async function run(choice: Choice): Promise<void> {
         OPENAI_API_KEY: key,
         TERM: "dumb",
         NO_COLOR: "1",
+        OPENCODE_DISABLE_MODELS_FETCH: "1",
         DISABLE_TELEMETRY: "1",
         DISABLE_AUTOUPDATER: "1",
         DISABLE_ERROR_REPORTING: "1",
