@@ -1,5 +1,7 @@
 name: Publish to npm
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -26,7 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
@@ -34,7 +37,7 @@ jobs:
           package-manager-cache: false
       - name: Check release metadata
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           node --input-type=module <<'JS'
           import assert from 'node:assert/strict';
@@ -46,6 +49,7 @@ jobs:
           assert(readFileSync('LICENSE', 'utf8').includes('MIT License'));
           assert.equal(pkg.repository.url, `git+https://github.com/${process.env.GITHUB_REPOSITORY}.git`);
           JS
+          git merge-base --is-ancestor HEAD origin/main
       - name: Record immutable source commit
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -74,7 +78,7 @@ jobs:
       - run: pnpm test:compat
   publish:
     name: Publish approved version
-    if: ${{ inputs.publish && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' || (inputs.publish && github.ref == 'refs/heads/main') }}
     needs: [metadata, verify, compatibility]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -96,4 +100,4 @@ jobs:
       - run: pnpm build
       # The exact source commit passed verification above; build explicitly
       # instead of running the entire test suite again in publication hooks.
-      - run: pnpm publish --access public --provenance --ignore-scripts
+      - run: npm publish --access public --provenance --ignore-scripts

@@ -1,17 +1,12 @@
 # Releases
 
-The npm package is `agent-request-logger`, and its source repository is
+The public npm package is `agent-request-logger`. Its source is maintained at
 [chepetime/agent-request-logger](https://github.com/chepetime/agent-request-logger).
-The package version in `package.json` and the matching Git tag identify each
-release.
 
-Do not push, change repository visibility, or publish without the owner's
-explicit permission. Workflow files describe how an approved release will
-work; they do not authorize one.
+## Publish a version
 
-## Local preparation
-
-Use `.nvmrc` and the pnpm version in `package.json`:
+Use the Node version in `.nvmrc` and the pnpm version in `package.json`.
+Update `package.json` to the intended version, then run:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -20,53 +15,57 @@ pnpm test:compat
 pnpm pack --dry-run
 ```
 
-Review package metadata, README commands, LICENSE, and packed file contents.
-Keep build output and dependencies out of Git. The package must include built
-JavaScript, its executable, the MIT license, and `docs/agents.md`.
+Review the packed contents: built JavaScript, the executable, README, MIT
+license, and agent guide. Commit and push the version change to `main`.
+Once CI passes, create and push the matching tag, for example:
 
-## First publication
+```sh
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
+```
 
-After explicit approval:
+**Pushing a `v*` tag starts publication automatically.** Only push a release
+tag when publication is intended. The tag must match `package.json`, and its
+commit must belong to `main`.
 
-1. Confirm the GitHub visibility and npm account/package name. An available
-   name is not reserved until npm accepts a publication.
-2. Push the reviewed source and approve any intended visibility change.
-3. Sign in interactively with `pnpm login`; check the account with `pnpm whoami`.
-4. Publish the verified version using `pnpm publish --access public`. Complete
-   any browser or two-factor authentication prompt yourself.
-5. Register the npm trusted publisher for owner `chepetime`, repository
-   `agent-request-logger`, workflow `publish.yml`, and environment `npm-release`.
-6. Configure required reviewers on the GitHub `npm-release` environment. Merely
-   naming the environment in YAML does not configure its approval rules.
+The workflow checks the metadata, runs CI and all real-agent compatibility
+routes on Ubuntu with the pinned Node LTS version, then builds and publishes
+the exact tagged commit. npm authenticates GitHub Actions through OIDC and
+records public provenance. No npm token is stored in GitHub.
 
-Follow [npm's trusted publisher setup](https://docs.npmjs.com/trusted-publishers/).
-The publication job uses short-lived OIDC credentials rather than a stored
-npm token. Public provenance requires a public source repository.
+The workflow can also be run manually from `main` with an existing tag.
+Leave the publication checkbox off for verification only; enable it to publish.
+An already published npm version cannot be reused. Check registry state before
+retrying a failed release.
 
-## Later releases
+## Trusted publisher
 
-Update the package version, validate the source, and create its matching `v*`
-tag. Push only after permission. Pushing a tag does not publish anything.
+The npm trusted publisher must match these values:
 
-Run **Publish to npm** manually from `main`, supplying the tag. Leave the
-publication checkbox off to run verification only. An approved publication
-requires explicitly enabling that checkbox and passing the `npm-release`
-environment's configured approval rules.
+| Setting      | Value                  |
+| ------------ | ---------------------- |
+| GitHub owner | `chepetime`            |
+| Repository   | `agent-request-logger` |
+| Workflow     | `publish.yml`          |
+| Environment  | `npm-release`          |
+| Permission   | Publish                |
 
-The workflow resolves the tag to one commit, checks release metadata, reuses
-the CI checks, and runs all real-agent compatibility routes. The publication
-job checks out that same commit, installs the frozen lockfile, rebuilds, and
-publishes. Its publish command skips lifecycle hooks because the selected
-commit has already passed verification and is rebuilt explicitly.
+The GitHub `npm-release` environment may add required reviewers if desired.
+When configured, its approval gate also applies to tag-triggered publication.
+See [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/).
 
-npm package versions cannot be reused. If a release fails after upload, check
-registry state before attempting another publication.
+The first publication requires an npm owner to sign in and bootstrap the
+package before its trusted publisher can be registered.
 
 ## Verify the published CLI
 
-From an unrelated temporary directory, run `npx agent-request-logger@VERSION`,
-choose a setup, and send a real agent request. Confirm its captures appear in
-that directory's `request-logger-logs/` folder and preferences remain separate.
+From an unrelated directory, run:
 
-Check global and project-local usage when changing executable packaging. The
-installation modes are documented in the [README](../README.md#install).
+```sh
+npx agent-request-logger@VERSION --version
+npx agent-request-logger@VERSION
+```
+
+Choose an agent setup and send a request. Confirm captures appear under that
+launch directory's `request-logger-logs/` folder and preferences remain separate.
+Consumer installation modes are documented in the [README](../README.md#install).
