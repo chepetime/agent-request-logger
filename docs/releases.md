@@ -1,8 +1,9 @@
 # Releases
 
-The package is prepared for npm as `agent-request-logger`. The GitHub repository
-is currently private and empty; no source has been pushed and no npm version
-has been published.
+The npm package is `agent-request-logger`, and its source repository is
+[chepetime/agent-request-logger](https://github.com/chepetime/agent-request-logger).
+The package version in `package.json` and the matching Git tag identify each
+release.
 
 Do not push, change repository visibility, or publish without the owner's
 explicit permission. Workflow files describe how an approved release will

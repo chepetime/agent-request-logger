@@ -13,10 +13,6 @@ See [agent setup](docs/agents.md) for available providers and limitations.
 Requires **Node.js 22.15 or newer**, npm, and an installed coding agent.
 Launch commands printed by the logger use bash/zsh syntax.
 
-> The package has not been published yet. The registry commands below describe
-> the intended installation once a release is available. Contributors can
-> [run from source](CONTRIBUTING.md#run-from-source) now.
-
 Run without a global install:
 
 ```sh

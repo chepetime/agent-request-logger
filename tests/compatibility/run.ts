@@ -39,6 +39,14 @@ async function close(server: http.Server): Promise<void> {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 }
+function stopProcessGroup(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+}
 async function install(agent: keyof typeof tools): Promise<string> {
   const [pkg, version] = tools[agent];
   const prefix = path.join(root, agent);
@@ -329,6 +337,9 @@ async function run(choice: Choice): Promise<void> {
       [exit] = await once(child, "exit");
     } finally {
       clearTimeout(timeout);
+      // Some CLIs leave plugin installers running after their main process exits.
+      // Stop the isolated process group before removing its temporary home.
+      stopProcessGroup(child.pid);
     }
     assert.equal(exit, 0, output.slice(-3000));
     assert(output.includes(reply), output.slice(-3000));
@@ -347,7 +358,8 @@ async function run(choice: Choice): Promise<void> {
   } finally {
     await close(gateway);
     await close(upstream);
-    if (success) await fs.rm(scratch, { recursive: true, force: true });
+    if (success)
+      await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     else console.error(`Failure artifacts: ${scratch}`);
   }
 }
