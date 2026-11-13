@@ -1,0 +1,3 @@
+# esbuild supplies the native transform used by the development/test tools.
+allowBuilds:
+  esbuild: true

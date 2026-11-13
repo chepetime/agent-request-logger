@@ -70,7 +70,10 @@ development and available through a manual GitHub workflow.
 
 ## Automation
 
-The CI workflow runs lint and type checking with `.nvmrc`, then unit,
-integration, and package E2E tests on the supported Node LTS lines. The primary
-Node version is also checked on macOS. Release verification reuses CI and adds
-the complete compatibility run. See [releases](releases.md).
+The CI workflow uses one Ubuntu job with the Node LTS version pinned in
+`.nvmrc`. It installs the frozen lockfile once and runs `pnpm check` for lint,
+types, unit, integration, and package E2E checks. The repository explicitly
+allows esbuild's required install hook in `pnpm-workspace.yaml`.
+
+Release verification reuses CI and adds the complete compatibility run.
+See [releases](releases.md).
