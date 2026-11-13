@@ -284,7 +284,7 @@ async function run(choice: Choice): Promise<void> {
       agent === "codex"
         ? ["exec", "--skip-git-repo-check", prompt]
         : agent === "opencode"
-          ? ["run", prompt]
+          ? ["--print-logs", "--log-level", "DEBUG", "run", prompt]
           : agent === "pi"
             ? [
                 "--provider",
@@ -341,7 +341,7 @@ async function run(choice: Choice): Promise<void> {
       // Stop the isolated process group before removing its temporary home.
       stopProcessGroup(child.pid);
     }
-    assert.equal(exit, 0, output.slice(-3000));
+    assert.equal(exit, 0, output.slice(-12000));
     assert(output.includes(reply), output.slice(-3000));
     for (let attempt = 0; captures.length === 0 && attempt < 50; attempt++)
       await new Promise((resolve) => setTimeout(resolve, 50));
