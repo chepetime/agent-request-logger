@@ -1,0 +1,21 @@
+name: Real-agent compatibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: .cache/agents
+          key: agents-${{ runner.os }}-${{ hashFiles('tests/compatibility/run.ts') }}
+      - run: npm run test:compat

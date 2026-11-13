@@ -1,0 +1,52 @@
+{
+  "name": "agent-request-logger",
+  "version": "0.1.0",
+  "description": "See the system prompts, tools, messages, and responses your coding agent sends over HTTP.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "agent-request-logger": "bin/agent-request-logger.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "LICENSE",
+    "NOTICE.md",
+    "AGENT_GUIDE.md"
+  ],
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "dev": "npm run build && node bin/agent-request-logger.js",
+    "build": "node scripts/build.mjs",
+    "start": "node bin/agent-request-logger.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests/unit tests/integration",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && vitest run tests/e2e && node scripts/package-smoke.mjs",
+    "test:package": "npm run build && node scripts/package-smoke.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run test:package",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:compat": "npm run build && tsx tests/compatibility/run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chepetime/agent-request-logger.git"
+  },
+  "homepage": "https://github.com/chepetime/agent-request-logger#readme",
+  "bugs": {
+    "url": "https://github.com/chepetime/agent-request-logger/issues"
+  }
+}

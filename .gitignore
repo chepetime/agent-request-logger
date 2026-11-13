@@ -1,0 +1,33 @@
+# Installations and generated output
+node_modules/
+dist/
+coverage/
+.vitest/
+.cache/
+*.tsbuildinfo
+*.tgz
+
+# Captured traffic and local preferences
+request-logger-logs/
+logs/
+captures/
+.agent-choice.json
+.agent-request-logger/
+
+# Real-agent downloads and test artifacts
+e2e/.tools/
+test-results/
+.tmp/
+tmp/
+*.log
+npm-debug.log*
+
+# Credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/
