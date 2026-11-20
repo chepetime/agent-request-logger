@@ -114,6 +114,41 @@ it("returns an HTTP error when the upstream is unavailable", async () => {
   expect(response.status).toBe(502);
   expect(await response.text()).toContain("Unable to reach upstream");
 });
+it("captures a streamed response when the client closes after receiving it", async () => {
+  scratch = await fs.mkdtemp(path.join(os.tmpdir(), "logger-disconnect-"));
+  const origin = await listen(
+    http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"type":"response.output_text.delta","delta":"hello"}\n\n');
+    }),
+  );
+  let captured!: (file: string) => void;
+  const done = new Promise<string>((resolve) => {
+    captured = resolve;
+  });
+  const errors: Error[] = [];
+  const gateway = await listen(
+    createGateway({
+      target: resolveTarget({ agent: "codex", provider: "chatgpt" }, 8787),
+      directory: scratch,
+      override: new URL(origin),
+      onCapture: captured,
+      onError: (error) => errors.push(error),
+    }),
+  );
+  const controller = new AbortController();
+  const response = await fetch(`${gateway}/backend-api/codex/responses`, {
+    method: "POST",
+    body: "{}",
+    signal: controller.signal,
+  });
+  await response.body!.getReader().read();
+  controller.abort();
+  const file = await done;
+  expect(await fs.readFile(file, "utf8")).toContain("hello");
+  expect(errors).toEqual([]);
+});
 it("rejects WebSocket negotiation promptly", async () => {
   scratch = await fs.mkdtemp(path.join(os.tmpdir(), "logger-upgrade-"));
   const address = await listen(

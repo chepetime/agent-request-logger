@@ -18,6 +18,7 @@ export interface Exchange {
   request: Buffer;
   response: Buffer;
   elapsedMs: number;
+  responseIncomplete?: boolean;
 }
 const hidden = new Set([
   "authorization",
@@ -86,7 +87,7 @@ export function markdown(exchange: Exchange): string {
   const responseText = requestText(exchange.response, exchange.responseEncoding);
   const sections = [
     "# Agent HTTP capture",
-    `${exchange.agent}\n\nRequest: ${exchange.requestId ?? "unassigned"}\n\n${exchange.method} ${exchange.url} → ${exchange.status} (${exchange.elapsedMs} ms)`,
+    `${exchange.agent}\n\nRequest: ${exchange.requestId ?? "unassigned"}\n\n${exchange.method} ${exchange.url} → ${exchange.status} (${exchange.elapsedMs} ms)${exchange.responseIncomplete ? "\n\nResponse stream closed by the client before the upstream finished; capture may be incomplete." : ""}`,
     `## Request headers\n\n${code(safeHeaders(exchange.headers))}`,
   ];
   if (request && exchange.protocol !== "raw") {

@@ -133,6 +133,8 @@ function forwardRequest(
   const send = context.upstream.protocol === "https:" ? https.request : http.request;
   let failed = false;
   let responseComplete = false;
+  let clientClosed = false;
+  let savePartialResponse: (() => void) | undefined;
   const upstream = send(
     {
       protocol: context.upstream.protocol,
@@ -150,7 +152,8 @@ function forwardRequest(
     outgoing.writeHead(response.statusCode ?? 502, transportHeaders(response.headers));
     response.on("data", (chunk) => responseChunks.push(Buffer.from(chunk)));
     response.on("error", fail);
-    response.on("end", () => {
+    const recordResponse = () => {
+      if (responseComplete) return;
       responseComplete = true;
       context.record({
         requestId,
@@ -164,8 +167,11 @@ function forwardRequest(
         response: Buffer.concat(responseChunks),
         responseEncoding: String(response.headers["content-encoding"] ?? ""),
         elapsedMs: Math.round(performance.now() - started),
+        responseIncomplete: clientClosed,
       });
-    });
+    };
+    savePartialResponse = recordResponse;
+    response.on("end", recordResponse);
     // Pipe streams immediately. Buffered copies are used only after completion
     // to write captures, so capture formatting cannot delay individual tokens.
     response.pipe(outgoing);
@@ -173,7 +179,7 @@ function forwardRequest(
 
   function fail(error: Error): void {
     // Request and response streams can report the same failure during teardown.
-    if (failed) return;
+    if (failed || clientClosed) return;
     failed = true;
     context.report(
       new LoggerError(
@@ -196,7 +202,11 @@ function forwardRequest(
   incoming.on("data", (chunk) => requestChunks.push(Buffer.from(chunk)));
   incoming.on("error", (error) => upstream.destroy(error));
   outgoing.on("close", () => {
-    if (!responseComplete) upstream.destroy();
+    if (!responseComplete) {
+      clientClosed = true;
+      savePartialResponse?.();
+      upstream.destroy();
+    }
   });
   incoming.pipe(upstream);
 }
