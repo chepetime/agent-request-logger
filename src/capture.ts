@@ -19,21 +19,22 @@ export interface Exchange {
   response: Buffer;
   elapsedMs: number;
   responseIncomplete?: boolean;
+  /** The body exceeded the capture limit; the copy holds only its beginning. */
+  requestTruncated?: boolean;
+  responseTruncated?: boolean;
 }
-const hidden = new Set([
-  "authorization",
-  "proxy-authorization",
-  "x-api-key",
-  "api-key",
-  "x-goog-api-key",
-  "cookie",
-  "set-cookie",
-]);
+// Names are matched as whole dash-separated words, so "x-auth-token" and
+// "x-goog-api-key" are hidden while "anthropic-beta" and "session_id" remain.
+const credentialHeader =
+  /(?:^|-)(?:authorization|auth|api-?key|apikey|token|secret|password|cookie|signature|credential|credentials)(?:-|$)/i;
+export function isCredentialHeader(name: string): boolean {
+  return credentialHeader.test(name);
+}
 export function safeHeaders(headers: IncomingHttpHeaders): IncomingHttpHeaders {
   return Object.fromEntries(
     Object.entries(headers).map(([name, value]) => [
       name,
-      hidden.has(name.toLowerCase()) ? "[REDACTED]" : value,
+      isCredentialHeader(name) ? "[REDACTED]" : value,
     ]),
   );
 }
@@ -85,9 +86,22 @@ export function markdown(exchange: Exchange): string {
   const text = requestText(exchange.request, Array.isArray(encoding) ? encoding[0] : encoding);
   const request = parseJson(text);
   const responseText = requestText(exchange.response, exchange.responseEncoding);
+  const notes = [
+    exchange.responseIncomplete &&
+      "Response stream closed before the upstream finished; capture may be incomplete.",
+    exchange.requestTruncated &&
+      "Request body exceeded the capture limit; only its beginning was saved.",
+    exchange.responseTruncated &&
+      "Response body exceeded the capture limit; only its beginning was saved.",
+  ].filter(Boolean);
   const sections = [
     "# Agent HTTP capture",
-    `${exchange.agent}\n\nRequest: ${exchange.requestId ?? "unassigned"}\n\n${exchange.method} ${exchange.url} → ${exchange.status} (${exchange.elapsedMs} ms)${exchange.responseIncomplete ? "\n\nResponse stream closed by the client before the upstream finished; capture may be incomplete." : ""}`,
+    [
+      exchange.agent,
+      `Request: ${exchange.requestId ?? "unassigned"}`,
+      `${exchange.method} ${exchange.url} → ${exchange.status} (${exchange.elapsedMs} ms)`,
+      ...notes.map((note) => `> ${note}`),
+    ].join("\n\n"),
     `## Request headers\n\n${code(safeHeaders(exchange.headers))}`,
   ];
   if (request && exchange.protocol !== "raw") {

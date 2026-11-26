@@ -7,18 +7,34 @@ on:
         type: choice
         default: all
         options: [all, claude-code, codex, opencode, pi]
+      versions:
+        description: Use the pinned agent versions or the newest releases
+        type: choice
+        default: pinned
+        options: [pinned, latest]
+  schedule:
+    # Weekly early warning: newest agent releases against the current setup.
+    - cron: "17 6 * * 1"
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to verify
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: compatibility-${{ github.ref }}-${{ inputs.agent }}
+  group: compatibility-${{ inputs.ref || github.ref }}-${{ inputs.agent || 'all' }}-${{ inputs.versions || github.event_name }}
   cancel-in-progress: true
 jobs:
   agents:
+    name: Agents / ${{ github.event_name == 'schedule' && 'latest' || inputs.versions || 'pinned' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
@@ -30,7 +46,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run selected compatibility checks
         env:
-          AGENT: ${{ inputs.agent }}
+          AGENT: ${{ inputs.agent || 'all' }}
+          AGENT_VERSIONS: ${{ github.event_name == 'schedule' && 'latest' || inputs.versions || 'pinned' }}
         run: |
           if [ "$AGENT" = all ]; then
             pnpm test:compat

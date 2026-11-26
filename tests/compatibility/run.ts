@@ -17,9 +17,9 @@ const root = path.resolve(".cache/agents");
 const reply = "LOCAL-AGENT-LOGGER-TEST-REPLY";
 const key = "sk-local-test-no-account-required";
 const tools = {
-  "claude-code": ["@anthropic-ai/claude-code", "2.1.318", "claude"],
-  codex: ["@openai/codex", "0.166.0", "codex"],
-  opencode: ["opencode-ai", "1.19.5", "opencode"],
+  "claude-code": ["@anthropic-ai/claude-code", "2.1.332", "claude"],
+  codex: ["@openai/codex", "0.172.0", "codex"],
+  opencode: ["opencode-ai", "1.19.6", "opencode"],
   pi: ["@mariozechner/pi-coding-agent", "0.73.1", "pi"],
 } as const;
 const routes: Choice[] = [
@@ -47,8 +47,17 @@ function stopProcessGroup(pid: number | undefined): void {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
 }
+// AGENT_VERSIONS=latest checks the newest releases instead of the pins, so a
+// scheduled run can warn about upstream agent changes before users hit them.
+const useLatest = process.env.AGENT_VERSIONS === "latest";
+async function latestVersion(pkg: string): Promise<string> {
+  const { stdout } = await execute("npm", ["view", pkg, "version"]);
+  return stdout.trim();
+}
 async function install(agent: keyof typeof tools): Promise<string> {
-  const [pkg, version] = tools[agent];
+  const [pkg, pinned] = tools[agent];
+  const version = useLatest ? await latestVersion(pkg) : pinned;
+  if (useLatest) console.log(`Using ${pkg}@${version} (pinned ${pinned})`);
   const prefix = path.join(root, agent);
   try {
     const manifest = JSON.parse(
@@ -257,7 +266,7 @@ async function run(choice: Choice): Promise<void> {
     override: new URL(`http://127.0.0.1:${upstreamPort}`),
     onCapture: (file) => captures.push(file),
   });
-  await new Promise<void>((resolve) => gateway.listen(port, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => gateway.server.listen(port, "127.0.0.1", resolve));
   let success = false;
   try {
     for (const file of target.files) {
@@ -363,7 +372,7 @@ async function run(choice: Choice): Promise<void> {
     console.log(`PASS ${agent}/${choice.provider}: real CLI, routing, auth, streaming and capture`);
     success = true;
   } finally {
-    await close(gateway);
+    await gateway.close();
     await close(upstream);
     if (success)
       await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

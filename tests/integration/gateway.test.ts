@@ -70,7 +70,7 @@ it("forwards gzip bytes and credentials, streams before completion, then writes 
       directory: scratch,
       onCapture: captured,
       onError: (error) => errors.push(error),
-    }),
+    }).server,
   );
   const payload = gzipSync(JSON.stringify({ model: "test", input: "sensitive body" }));
   const response = await fetch(`${gateway}/v1/responses?trace=1`, {
@@ -108,7 +108,7 @@ it("returns an HTTP error when the upstream is unavailable", async () => {
       directory: scratch,
       override: new URL(origin),
       onError() {},
-    }),
+    }).server,
   );
   const response = await fetch(`${gateway}/v1/responses`, { method: "POST", body: "{}" });
   expect(response.status).toBe(502);
@@ -135,7 +135,7 @@ it("captures a streamed response when the client closes after receiving it", asy
       override: new URL(origin),
       onCapture: captured,
       onError: (error) => errors.push(error),
-    }),
+    }).server,
   );
   const controller = new AbortController();
   const response = await fetch(`${gateway}/backend-api/codex/responses`, {
@@ -155,7 +155,7 @@ it("rejects WebSocket negotiation promptly", async () => {
     createGateway({
       target: resolveTarget({ agent: "codex", provider: "openai" }, 8787),
       directory: scratch,
-    }),
+    }).server,
   );
   const socket = net.connect(Number(new URL(address).port), "127.0.0.1");
   socket.setTimeout(1000, () => socket.destroy(new Error("Upgrade timed out")));
@@ -182,4 +182,66 @@ it("discovers model IDs without credentials, deduplicates them, and respects /v1
   expect(await discoverModels(origin)).toEqual(["one", "two"]);
   expect(await discoverModels(`${origin}/prefix/v1`)).toEqual(["one", "two"]);
   expect(paths).toEqual(["/v1/models", "/prefix/v1/models"]);
+});
+
+it("forwards a body larger than the capture limit intact but saves only its beginning", async () => {
+  scratch = await fs.mkdtemp(path.join(os.tmpdir(), "logger-limit-"));
+  let received = 0;
+  const origin = await listen(
+    http.createServer(async (req, res) => {
+      for await (const chunk of req) received += chunk.length;
+      res.end("x".repeat(5000));
+    }),
+  );
+  let captured!: (file: string) => void;
+  const done = new Promise<string>((resolve) => {
+    captured = resolve;
+  });
+  const gateway = await listen(
+    createGateway({
+      target: resolveTarget({ agent: "codex", provider: "openai" }, 8787),
+      directory: scratch,
+      override: new URL(origin),
+      maxCaptureBytes: 1000,
+      onCapture: captured,
+    }).server,
+  );
+  const response = await fetch(`${gateway}/v1/responses`, {
+    method: "POST",
+    body: "y".repeat(4000),
+  });
+  expect((await response.text()).length).toBe(5000);
+  expect(received).toBe(4000);
+  const file = await done;
+  expect((await fs.stat(file.replace(/\.md$/, ".request.txt"))).size).toBe(1000);
+  expect((await fs.stat(file.replace(/\.md$/, ".response.txt"))).size).toBe(1000);
+  expect(await fs.readFile(file, "utf8")).toContain("exceeded the capture limit");
+});
+
+it("records an open stream as incomplete when the gateway closes", async () => {
+  scratch = await fs.mkdtemp(path.join(os.tmpdir(), "logger-close-"));
+  const origin = await listen(
+    http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"type":"response.output_text.delta","delta":"partial"}\n\n');
+    }),
+  );
+  const files: string[] = [];
+  const gateway = createGateway({
+    target: resolveTarget({ agent: "codex", provider: "openai" }, 8787),
+    directory: scratch,
+    override: new URL(origin),
+    onCapture: (file) => files.push(file),
+    onError() {},
+  });
+  const address = await listen(gateway.server);
+  servers.pop();
+  const response = await fetch(`${address}/v1/responses`, { method: "POST", body: "{}" });
+  await response.body!.getReader().read();
+  await gateway.close();
+  expect(files).toHaveLength(1);
+  const capture = await fs.readFile(files[0]!, "utf8");
+  expect(capture).toContain("partial");
+  expect(capture).toContain("capture may be incomplete");
 });

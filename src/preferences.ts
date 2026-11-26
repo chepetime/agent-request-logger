@@ -10,14 +10,14 @@ export interface Locations {
 // Resolve relative options against the launch directory, never the installed
 // package location. Preferences alone use the home directory by default.
 export function locations(
-  env: NodeJS.ProcessEnv,
+  chosen: { logDir?: string; configDir?: string },
   cwd = process.cwd(),
   home = os.homedir(),
 ): Locations {
   return {
-    logDir: path.resolve(cwd, env.REQUEST_LOGGER_LOG_DIR || "request-logger-logs"),
+    logDir: path.resolve(cwd, chosen.logDir || "request-logger-logs"),
     preferenceFile: path.join(
-      path.resolve(cwd, env.REQUEST_LOGGER_CONFIG_DIR || path.join(home, ".agent-request-logger")),
+      path.resolve(cwd, chosen.configDir || path.join(home, ".agent-request-logger")),
       ".agent-choice.json",
     ),
   };
@@ -46,6 +46,10 @@ export async function readPreference(file: string): Promise<Choice | undefined> 
 }
 
 export async function writePreference(file: string, choice: Choice): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `${JSON.stringify(choice, null, 2)}\n`, { mode: 0o600 });
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  // Write a sibling file and rename it so an interrupted save never leaves a
+  // half-written preference behind.
+  const temporary = `${file}.${process.pid}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify(choice, null, 2)}\n`, { mode: 0o600 });
+  await fs.rename(temporary, file);
 }

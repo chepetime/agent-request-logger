@@ -6,12 +6,7 @@ it("keeps captures under the launch directory and preferences under home", () =>
     logDir: "/work/project/request-logger-logs",
     preferenceFile: "/home/person/.agent-request-logger/.agent-choice.json",
   });
-  expect(
-    locations(
-      { REQUEST_LOGGER_LOG_DIR: "captures", REQUEST_LOGGER_CONFIG_DIR: "prefs" },
-      "/work/project",
-    ),
-  ).toEqual({
+  expect(locations({ logDir: "captures", configDir: "prefs" }, "/work/project")).toEqual({
     logDir: "/work/project/captures",
     preferenceFile: "/work/project/prefs/.agent-choice.json",
   });

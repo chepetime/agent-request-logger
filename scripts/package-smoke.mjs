@@ -91,8 +91,10 @@ try {
   assert.equal(body, payload);
   assert.equal(auth, "Bearer smoke-secret");
   const logs = path.join(scratch, "request-logger-logs");
-  for (let i = 0; i < 50 && !fs.existsSync(logs); i++) await delay(100);
-  const files = fs.readdirSync(logs);
+  // The .md file is written last, so its presence means all three files exist.
+  const listed = () => (fs.existsSync(logs) ? fs.readdirSync(logs) : []);
+  for (let i = 0; i < 50 && !listed().some((f) => f.endsWith(".md")); i++) await delay(100);
+  const files = listed();
   assert.equal(files.length, 3);
   const capture = fs.readFileSync(
     path.join(

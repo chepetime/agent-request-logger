@@ -114,7 +114,7 @@ export function resolveTarget(choice: Choice, port: number): Target {
   const setup = buildAgentSetup({
     choice,
     protocol: selected.protocol,
-    localUrl: `http://localhost:${port}`,
+    localUrl: `http://127.0.0.1:${port}`,
     model,
   });
   if (choice.provider === "custom") {
