@@ -93,18 +93,14 @@ try {
   const logs = path.join(scratch, "request-logger-logs");
   // The .md file is written last, so its presence means all three files exist.
   const listed = () => (fs.existsSync(logs) ? fs.readdirSync(logs) : []);
-  for (let i = 0; i < 50 && !listed().some((f) => f.endsWith(".md")); i++) await delay(100);
+  // The review file exists from startup, so it must not end this wait.
+  const isCapture = (f) => f.endsWith(".md") && !f.endsWith(".review.md");
+  for (let i = 0; i < 50 && !listed().some(isCapture); i++) await delay(100);
   const files = listed().filter((f) => !f.endsWith(".review.md"));
   assert.equal(files.length, 3);
   const review = listed().find((f) => f.endsWith(".review.md"));
   assert(review, "The session review file must exist");
-  const capture = fs.readFileSync(
-    path.join(
-      logs,
-      files.find((f) => f.endsWith(".md")),
-    ),
-    "utf8",
-  );
+  const capture = fs.readFileSync(path.join(logs, files.find(isCapture)), "utf8");
   assert(capture.includes("package-smoke-prompt"));
   assert(!capture.includes("smoke-secret"));
   assert(capture.includes("[REDACTED]"));
