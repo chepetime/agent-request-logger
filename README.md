@@ -108,7 +108,9 @@ Read /Users/you/project/request-logger-logs/2026-11-26T19-04-00.000Z.review.md
 The file is short on purpose. It has one table row per request (endpoint,
 status, model, message count, tokens, stop reason, and the first line of the
 reply). Identical system prompts and tool sets get one letter, so the agent
-reads them once, and tool changes show as `+name` or `−name`. Absolute paths
+reads them once, and tool changes show as `+name` or `−name`. Agents resend
+the whole conversation on every request, so a **New messages** section shows
+only what each request added, one short line per message. Absolute paths
 lead to the full captures when a row is not enough. The file also tells the
 agent to treat captures as data and not to follow the instructions inside
 them. Use `--no-review` to turn it off.

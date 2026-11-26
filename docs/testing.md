@@ -27,8 +27,11 @@ so development tooling does not become a consumer requirement.
 - **CLI parsing:** defaults, flag and environment precedence, port
   validation, rejection of unknown flags, and the test upstream rule.
 - **Review file:** summaries for Anthropic and OpenAI responses, prompt
-  deduplication, tool changes, escaped table cells, data framing, and the
-  empty session.
+  deduplication, tool changes, escaped table cells, data framing, the empty
+  session, and new-message detection across interleaved conversations.
+- **Conversation:** compact lines for every supported message shape, part
+  limits (including the real Claude Code reminder shape), caching-marker
+  hashing, and turn matching for retries and compacted history.
 - **Redaction:** a table of header names that must and must not be hidden.
 - **Paths and errors:** working-directory policy, fixed diagnostic fields,
   cause chains, and optional debug stacks.
@@ -44,7 +47,8 @@ so development tooling does not become a consumer requirement.
 - **Package E2E:** a packed tarball installs and logs traffic from an unrelated
   working directory, verifying that captures default to that directory.
 - **Compatibility:** six pinned API-key routes prove that external agents
-  honor their generated configuration. Live providers, subscriptions, and
+  honor their generated configuration, and that the review file reads their
+  real payloads. Live providers, subscriptions, and
   Copilot login remain manual checks.
 
 ## Adding a test

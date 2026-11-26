@@ -19,6 +19,7 @@ flowchart TD
   targets --> setup[agent-setup.ts]
   main --> review[review.ts]
   review --> capture
+  review --> conversation[conversation.ts]
   review --> decoder
   gateway --> capture[capture.ts]
   capture --> decoder[response-decoder.ts]
@@ -39,6 +40,7 @@ flowchart TD
 | `src/model-discovery.ts`      | Optional `/v1/models` listing for custom providers.                             |
 | `src/gateway.ts`              | HTTP forwarding, stream lifecycle, bounded body copies, capture scheduling.     |
 | `src/review.ts`               | The session review index: per-request summaries, prompt deduplication, framing. |
+| `src/conversation.ts`         | Message history: stable hashes, compact message lines, and turn matching.       |
 | `src/capture.ts`              | Markdown rendering, header redaction, and raw file persistence.                 |
 | `src/response-decoder.ts`     | Anthropic and OpenAI response interpretation (SSE and JSON).                    |
 | `src/errors.ts`               | Error codes, cause chains, and diagnostic formatting.                           |
@@ -88,6 +90,9 @@ These rules are covered by tests. Keep them when you change the code.
 - **The review file stays small and safe to read.** It never contains a full
   prompt. It frames captures as data, so a reviewing agent does not follow
   instructions found in them.
+- **New messages are found by content, not position.** A request continues
+  the latest earlier request whose message hashes are a prefix of its own.
+  Prompt-caching markers are ignored in hashes because they move every turn.
 - **Retries cannot flood the disk.** Identical model captures are limited to
   20 in a two-second window. Every response is still forwarded.
 

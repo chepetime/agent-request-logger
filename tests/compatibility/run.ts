@@ -10,6 +10,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { shellArgument } from "../../src/agent-setup.js";
 import { createGateway } from "../../src/gateway.js";
+import { ReviewSession } from "../../src/review.js";
 import { type Choice, resolveTarget } from "../../src/targets.js";
 
 const execute = promisify(execFile);
@@ -260,11 +261,17 @@ async function run(choice: Choice): Promise<void> {
   await close(probe);
   const target = resolveTarget(choice, port);
   const captures: string[] = [];
+  const review = new ReviewSession(path.join(scratch, "captures"), target.name, (error) => {
+    throw error;
+  });
   const gateway = createGateway({
     target,
     directory: path.join(scratch, "captures"),
     override: new URL(`http://127.0.0.1:${upstreamPort}`),
-    onCapture: (file) => captures.push(file),
+    onCapture: (file, exchange) => {
+      captures.push(file);
+      void review.add(exchange, file);
+    },
   });
   await new Promise<void>((resolve) => gateway.server.listen(port, "127.0.0.1", resolve));
   let success = false;
@@ -369,6 +376,13 @@ async function run(choice: Choice): Promise<void> {
     assert(!content.includes(key));
     assert(content.includes("[REDACTED]"));
     assert(seen.some((request) => JSON.stringify(request.headers).includes(key)));
+    // The review index must read this agent's real payloads: the prompt appears
+    // as a message, the reply in the table, and no credential anywhere.
+    await review.flush();
+    const index = await fs.readFile(review.file, "utf8");
+    assert(index.includes(prompt), index);
+    assert(index.includes(reply), index);
+    assert(!index.includes(key));
     console.log(`PASS ${agent}/${choice.provider}: real CLI, routing, auth, streaming and capture`);
     success = true;
   } finally {
