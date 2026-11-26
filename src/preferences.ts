@@ -49,7 +49,7 @@ export async function writePreference(file: string, choice: Choice): Promise<voi
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   // Write a sibling file and rename it so an interrupted save never leaves a
   // half-written preference behind.
-  const temporary = `${file}.${process.pid}.tmp`;
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
   await fs.writeFile(temporary, `${JSON.stringify(choice, null, 2)}\n`, { mode: 0o600 });
   await fs.rename(temporary, file);
 }

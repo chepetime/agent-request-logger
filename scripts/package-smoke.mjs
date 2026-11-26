@@ -96,8 +96,16 @@ try {
   // The review file exists from startup, so it must not end this wait.
   const isCapture = (f) => f.endsWith(".md") && !f.endsWith(".review.md");
   for (let i = 0; i < 50 && !listed().some(isCapture); i++) await delay(100);
-  const files = listed().filter((f) => !f.endsWith(".review.md"));
-  assert.equal(files.length, 3);
+  // Count only capture files; the review file and its hidden temporary copy
+  // are rewritten after every capture and may be present at any moment.
+  const files = listed().filter((f) =>
+    /^[^.].*(?<!\.review)\.(?:md|request\.txt|response\.txt)$/.test(f),
+  );
+  assert.equal(files.length, 3, files.join(", "));
+  assert(
+    !listed().some((f) => !f.startsWith(".") && f.endsWith(".tmp")),
+    "Temporary files must be hidden",
+  );
   const review = listed().find((f) => f.endsWith(".review.md"));
   assert(review, "The session review file must exist");
   const capture = fs.readFileSync(path.join(logs, files.find(isCapture)), "utf8");

@@ -278,7 +278,8 @@ export class ReviewSession {
     this.queue = this.queue.then(async () => {
       try {
         await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
-        const temporary = `${this.file}.tmp`;
+        // A hidden sibling keeps the half-written copy out of normal listings.
+        const temporary = path.join(this.directory, `.${path.basename(this.file)}.tmp`);
         await fs.writeFile(temporary, content(), { mode: 0o600 });
         await fs.rename(temporary, this.file);
       } catch (error) {

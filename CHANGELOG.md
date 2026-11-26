@@ -25,6 +25,8 @@ All notable changes to this project are documented here. The format follows
 
 - Prompt-caching markers (`cache_control`) no longer make identical system
   prompts, tools, or messages look different in the review file.
+- Temporary files from atomic writes of the review file and preferences are
+  now hidden dotfiles, so they no longer appear in the capture folder.
 
 ## [0.2.1] - 2026-11-26
 
