@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-26
+
+### Added
+
+- Review file: a **New** column and a **New messages** section show only the
+  messages each request added to the conversation it continues. Agents resend
+  the whole history on every request, so this removes most repeated text.
+  Requests from other conversations (titles, sub-agents) are matched
+  separately; compacted history is labelled "new history".
+- Message lines are compact: tool calls and results in brackets, thinking as
+  `[thinking]`, and injected context such as `<system-reminder>…` reduced to
+  its tag name and size. Each part is shortened on its own, so a long block
+  cannot hide the prompt after it.
+- Real-agent compatibility checks now also verify the review file.
+
+### Fixed
+
+- Prompt-caching markers (`cache_control`) no longer make identical system
+  prompts, tools, or messages look different in the review file.
+
 ## [0.2.1] - 2026-11-26
 
 ### Added
@@ -66,7 +86,8 @@ All notable changes to this project are documented here. The format follows
 - First release: local logging proxy for Claude Code, Codex, GitHub Copilot
   CLI, OpenCode, and Pi, with Markdown captures and raw body files.
 
-[Unreleased]: https://github.com/chepetime/agent-request-logger/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/chepetime/agent-request-logger/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/chepetime/agent-request-logger/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/chepetime/agent-request-logger/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/chepetime/agent-request-logger/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/chepetime/agent-request-logger/compare/v0.1.0...v0.1.1

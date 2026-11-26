@@ -101,3 +101,32 @@ it("explains an empty session instead of rendering an empty table", () => {
   expect(output).toContain("No model requests captured yet");
   expect(output).not.toContain("## Files");
 });
+
+it("shows only the messages each request added to the conversation it continues", () => {
+  const user = (text: string) => ({ role: "user", content: text });
+  const assistant = (text: string) => ({
+    role: "assistant",
+    content: [{ type: "text", text, cache_control: { type: "ephemeral" } }],
+  });
+  const body = (messages: unknown[]) => ({ model: "m", system: "s", tools, messages });
+  const rows = [
+    body([user("Fix the test")]),
+    body([user("Write a title")]),
+    body([
+      user("Fix the test"),
+      { ...assistant("Looking"), content: [{ type: "text", text: "Looking" }] },
+      user("ok"),
+    ]),
+    body([user("Summary of earlier work"), user("continue")]),
+  ].map((request, index) => summarize(exchange({ body: request }), `/logs/${index + 1}.md`));
+  const output = renderReview({ agent: "A", started: new Date(), directory: "/logs" }, rows);
+  const row = (n: number) => output.split("\n").find((line) => line.startsWith(`| ${n} |`))!;
+  expect(row(1)).toContain("new history");
+  expect(row(3)).toContain("+2 after #1");
+  expect(row(4)).toContain("new history");
+  expect(output).toContain("### #3 · 2 new after #1\n- assistant: Looking\n- user: ok");
+  expect(output).toContain("### #4 · new history of 2 messages, last 2 shown");
+  // The repeated first message is not printed again for request 3.
+  const section = output.slice(output.indexOf("### #3"), output.indexOf("### #4"));
+  expect(section).not.toContain("Fix the test");
+});

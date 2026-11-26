@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { type Exchange, requestText } from "./capture.js";
+import { describeMessage, fingerprint, messageList, previousTurn } from "./conversation.js";
 import { decodeResponse, parseJson } from "./response-decoder.js";
 
 /** One row of the review index: what a reader needs before opening a capture. */
@@ -14,6 +14,8 @@ export interface RequestSummary {
   elapsedMs: number;
   model?: string;
   messages?: number;
+  /** One hash and one short line per message, to find and show new messages. */
+  history?: { hashes: string[]; lines: string[] };
   system?: { hash: string; length: number };
   tools?: { hash: string; names: string[] };
   inputTokens?: number;
@@ -23,8 +25,10 @@ export interface RequestSummary {
   notes: string[];
 }
 
-const fingerprint = (value: unknown) =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 12);
+/** Messages shown for a request whose history matches no earlier request. */
+const UNMATCHED_TAIL = 3;
+/** Most new messages shown for one request; the capture has the rest. */
+const NEW_MESSAGE_LIMIT = 12;
 
 function toolName(tool: unknown): string {
   const value = tool as { name?: unknown; type?: unknown; function?: { name?: unknown } } | null;
@@ -43,7 +47,7 @@ export function summarize(exchange: Exchange, file: string): RequestSummary {
     exchange.protocol,
   );
   const system = request?.system ?? request?.instructions;
-  const messages = request?.messages ?? request?.input;
+  const messages = messageList(request);
   const tools = Array.isArray(request?.tools) ? request.tools : undefined;
   const text = system == null ? "" : typeof system === "string" ? system : JSON.stringify(system);
   const firstLine = response.text.trim().split("\n")[0];
@@ -55,7 +59,11 @@ export function summarize(exchange: Exchange, file: string): RequestSummary {
     status: exchange.status,
     elapsedMs: exchange.elapsedMs,
     model: typeof request?.model === "string" ? request.model : undefined,
-    messages: Array.isArray(messages) ? messages.length : undefined,
+    messages: messages?.length,
+    history: messages && {
+      hashes: messages.map(fingerprint),
+      lines: messages.map(describeMessage),
+    },
     system: system == null ? undefined : { hash: fingerprint(system), length: text.length },
     tools: tools && { hash: fingerprint(tools), names: tools.map(toolName) },
     inputTokens: response.inputTokens,
@@ -101,6 +109,46 @@ export function renderReview(
     }
   }
 
+  // For each request, the earlier request whose history it continues.
+  const turns = rows.map((row, index) =>
+    row.history
+      ? previousTurn(
+          rows.slice(0, index).map((earlier) => earlier.history?.hashes),
+          row.history.hashes,
+        )
+      : undefined,
+  );
+  const newLabel = (index: number) => {
+    const history = rows[index].history;
+    if (!history) return undefined;
+    const turn = turns[index];
+    if (!turn) return "new history";
+    const added = history.hashes.length - turn.shared;
+    return added ? `+${added} after #${turn.index + 1}` : `same as #${turn.index + 1}`;
+  };
+
+  const newMessages = rows.flatMap((row, index) => {
+    if (!row.history?.lines.length) return [];
+    const turn = turns[index];
+    let lines = turn ? row.history.lines.slice(turn.shared) : row.history.lines;
+    if (!lines.length) return [];
+    const limit = turn ? NEW_MESSAGE_LIMIT : UNMATCHED_TAIL;
+    const hidden = Math.max(0, lines.length - limit);
+    lines = lines.slice(hidden);
+    const heading = turn
+      ? `### #${index + 1} · ${lines.length + hidden} new after #${turn.index + 1}`
+      : `### #${index + 1} · new history of ${row.history.lines.length} messages, last ${lines.length} shown`;
+    return [
+      [
+        heading,
+        ...(turn && hidden
+          ? [`(${hidden} earlier new messages are in capture #${index + 1})`]
+          : []),
+        ...lines.map((line) => `- ${line}`),
+      ].join("\n"),
+    ];
+  });
+
   const table = rows.map((row, index) => {
     const tokens =
       row.inputTokens === undefined && row.outputTokens === undefined
@@ -115,6 +163,7 @@ export function renderReview(
       row.elapsedMs,
       row.model,
       row.messages,
+      newLabel(index),
       row.system && systems.get(row.system.hash)?.label,
       row.tools && `${toolsets.get(row.tools.hash)?.label} (${row.tools.names.length})`,
       tokens,
@@ -155,12 +204,16 @@ export function renderReview(
       "sections: Request headers, System instructions, Tools, Messages, Complete request, Response,",
       "and Complete response stream. Rows with the same System or Tools letter sent identical",
       "content, so read that part once. Tokens are input/output as the provider reported them.",
+      "Agents resend the whole conversation on every request. The New column and the New",
+      "messages section show only what each request added to the request it continues.",
+      '"new history" means no earlier request matched: a new conversation, a sub-agent, or',
+      "compacted history.",
     ].join("\n"),
     "## Requests",
     rows.length
       ? [
-          "| # | Time (UTC) | Request | Status | ms | Model | Msgs | System | Tools | Tokens | Stop | Reply |",
-          "| - | - | - | - | - | - | - | - | - | - | - | - |",
+          "| # | Time (UTC) | Request | Status | ms | Model | Msgs | New | System | Tools | Tokens | Stop | Reply |",
+          "| - | - | - | - | - | - | - | - | - | - | - | - | - |",
           ...table,
         ].join("\n")
       : "No model requests captured yet. This file updates after each capture.",
@@ -176,6 +229,7 @@ export function renderReview(
           ].join("\n"),
         ]
       : []),
+    ...(newMessages.length ? ["## New messages", newMessages.join("\n\n")] : []),
     ...(rows.length
       ? ["## Files", rows.map((row, index) => `${index + 1}. ${row.file}`).join("\n")]
       : []),
