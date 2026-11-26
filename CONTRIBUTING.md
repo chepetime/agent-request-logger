@@ -43,22 +43,22 @@ and how to avoid duplicate assertions.
 
 ## Source layout
 
-| Module                    | Responsibility                                               |
-| ------------------------- | ------------------------------------------------------------ |
-| `src/main.ts`             | Setup selection, server startup, and terminal instructions   |
-| `src/wizard.ts`           | Interactive questions and cancellation                       |
-| `src/targets.ts`          | Agent catalogue, provider validation, and routing resolution |
-| `src/agent-setup.ts`      | Agent-specific launch commands and configuration files       |
-| `src/preferences.ts`      | Launch-relative paths and remembered choices                 |
-| `src/model-discovery.ts`  | Optional model listing for custom providers                  |
-| `src/gateway.ts`          | HTTP forwarding, stream lifecycle, and capture scheduling    |
-| `src/capture.ts`          | Readable captures, redaction, and raw file persistence       |
-| `src/response-decoder.ts` | Anthropic and OpenAI response interpretation                 |
-| `src/errors.ts`           | Error classifications, causes, and diagnostic formatting     |
+[Architecture](docs/architecture.md) describes each module, the request
+lifecycle, and the invariants that tests protect. In short: `cli.ts` is the
+only reader of flags and environment variables, `gateway.ts` owns forwarding
+and stream lifecycle, and `capture.ts` owns everything written to disk.
 
 Keep protocol and agent quirks in their respective modules. Comments should
 explain a constraint or a non-obvious choice. Prefer a small helper with a
 clear job over another layer that merely forwards arguments.
+
+## Pull requests
+
+- Run `pnpm check` before you push. CI runs it on Node 22.15, 24, and 26 on
+  Ubuntu, and on macOS.
+- Add an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for
+  any change a user can notice.
+- Run `pnpm test:compat` when you change generated commands or agent setup.
 
 ## Add an agent or provider
 
@@ -67,7 +67,8 @@ endpoint. Add routing data in `targets.ts` and launch instructions in
 `agent-setup.ts`. Preserve custom path prefixes, quote shell values, and prefer
 invocation-specific settings over persistent edits where possible.
 
-Exercise setup decisions through target resolution. Use an integration check
+Exercise setup decisions through target resolution. Bump the pinned version in
+`tests/compatibility/run.ts` when a newer agent release needs different setup. Use an integration check
 when shell interpretation matters. Add a real-agent compatibility case only
 when it can use a local provider, dummy keys, and isolated configuration;
 document login routes that need manual verification.

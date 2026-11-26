@@ -1,0 +1,32 @@
+name: Bug report
+description: Something does not forward, capture, or render as expected.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Logger version
+      description: Output of `npx agent-request-logger --version`
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent, version, and provider
+      placeholder: Codex 0.172.0 with an OpenAI API key
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and what happened
+      description: Include console output from the logger, run with `--debug`.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+  - type: markdown
+    attributes:
+      value: "Do not paste captures that contain private code or secrets. Report security problems through SECURITY.md."

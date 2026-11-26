@@ -1,123 +1,165 @@
-# agent-request-logger
+<p align="center">
+  <img src="https://raw.githubusercontent.com/chepetime/agent-request-logger/main/docs/assets/logo.svg" width="96" height="96" alt="agent-request-logger logo">
+</p>
 
-See what your coding agent sends to its model provider: system instructions,
-tool definitions, messages, responses, and token usage. This CLI runs a local
-HTTP proxy, forwards traffic to the provider, and saves readable captures on
-your machine while streaming responses back to the agent.
+<h1 align="center">agent-request-logger</h1>
 
-Supports **Claude Code, Codex, GitHub Copilot CLI, OpenCode, and Pi**.
-See [agent setup](docs/agents.md) for available providers and limitations.
+<p align="center">
+  See exactly what your coding agent sends to its model provider.
+</p>
 
-## Install
+<p align="center">
+  <a href="https://www.npmjs.com/package/agent-request-logger"><img src="https://img.shields.io/npm/v/agent-request-logger" alt="npm version"></a>
+  <a href="https://github.com/chepetime/agent-request-logger/actions/workflows/ci.yml"><img src="https://github.com/chepetime/agent-request-logger/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/chepetime/agent-request-logger/actions/workflows/compatibility.yml"><img src="https://github.com/chepetime/agent-request-logger/actions/workflows/compatibility.yml/badge.svg" alt="Real-agent compatibility"></a>
+  <img src="https://img.shields.io/node/v/agent-request-logger" alt="Node.js version">
+  <a href="https://github.com/chepetime/agent-request-logger/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/agent-request-logger" alt="MIT license"></a>
+</p>
 
-Requires **Node.js 22.15 or newer**, npm, and an installed coding agent.
-Launch commands printed by the logger use bash/zsh syntax.
+`agent-request-logger` is a local HTTP proxy for coding agents. It forwards
+each request to the real provider, streams the response back unchanged, and
+saves a readable Markdown capture of the system prompt, tools, messages,
+response text, reasoning, tool calls, and token usage.
 
-Run without a global install:
+Works with **Claude Code, Codex, GitHub Copilot CLI, OpenCode, and Pi**, plus
+any OpenAI- or Anthropic-compatible endpoint.
 
 ```sh
 npx agent-request-logger
 ```
 
-Or install globally:
+## Why
 
-```sh
-npm i -g agent-request-logger
-agent-request-logger
+Coding agents build large prompts that you never see: system instructions,
+tool schemas, injected context, and retries. When an agent behaves strangely,
+the fastest way to understand it is to read the exact request it sent. This
+tool shows you that request with one command, without changing the agent,
+signing in again, or sending data anywhere except the provider you already use.
+
+## Quick start
+
+Requires **Node.js 22.15 or newer** and an installed, signed-in coding agent.
+
+1. In the project where you want captures, start the logger:
+
+   ```sh
+   npx agent-request-logger
+   ```
+
+2. Choose your agent and provider. The logger can remember the choice.
+3. In a second terminal, run the command that the logger prints, for example:
+
+   ```sh
+   ANTHROPIC_BASE_URL='http://127.0.0.1:8787' ENABLE_TOOL_SEARCH=true claude
+   ```
+
+4. Send a message to the agent. Open the newest `.md` file in
+   `./request-logger-logs/`.
+5. Press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the logger terminal. Open streams are
+   saved before it exits.
+
+Generated commands use bash or zsh syntax. Some setups also print a JSON
+snippet to merge into the agent's configuration file. See
+[agent setup](https://github.com/chepetime/agent-request-logger/blob/main/docs/agents.md)
+for every agent and provider.
+
+## How it works
+
+```mermaid
+flowchart LR
+  A[Coding agent] -- HTTP request --> L[agent-request-logger<br/>127.0.0.1:8787]
+  L -- same bytes --> P[Model provider]
+  P -- streamed response --> L
+  L -- streamed unchanged --> A
+  L -. after the response ends .-> C[(request-logger-logs/)]
 ```
 
-Or install in a project:
+- Requests and responses pass through byte for byte, including credentials
+  and compression. Streaming tokens reach the agent without delay.
+- The capture is written only after the response finishes, so formatting
+  never slows the agent down.
+- The logger listens on loopback only. Nothing leaves your machine except the
+  traffic that already goes to your provider.
 
-```sh
-npm i -D agent-request-logger
-```
+## Captures
 
-Add a script to that project's `package.json`:
+One agent turn can send several model requests. Each request produces three
+files that share a timestamp and request ID:
 
-```json
-{
-  "scripts": {
-    "log:agent": "agent-request-logger"
-  }
-}
-```
+| File            | Contents                                                                |
+| --------------- | ----------------------------------------------------------------------- |
+| `.md`           | Headers, system instructions, tools, messages, response text, and usage |
+| `.request.txt`  | The original request body bytes, including compression                  |
+| `.response.txt` | The original response body bytes                                        |
 
-Then run:
-
-```sh
-npm run log:agent
-```
-
-The published CLI runs built JavaScript; consumers do not need pnpm or
-TypeScript. This repository uses pnpm for development.
-
-## Use
-
-1. Open a terminal in the project where you want to save captures and start
-   the logger using one of the commands above.
-2. Choose your agent and provider. You can remember the setup for future runs.
-3. Leave the logger running. It listens on `127.0.0.1:8787` by default.
-4. In a second terminal, launch your agent with the exact command printed by
-   the logger. Merge any printed configuration settings into your existing
-   agent configuration first.
-5. Send a message to the agent and open the newest Markdown file under
-   `./request-logger-logs/` in the logger's working directory.
-6. Press Ctrl+C in the logger terminal when finished.
-
-Authenticate your agent normally before using the logger. Existing credentials
-are forwarded to the configured upstream; the logger does not sign you in.
-
-A single agent turn can make several model requests. Each captured request has
-three files sharing a timestamp and request ID:
-
-| File            | What it contains                                                          |
-| --------------- | ------------------------------------------------------------------------- |
-| `.md`           | Readable headers, instructions, tools, messages, response text, and usage |
-| `.request.txt`  | Original request body bytes, including compression                        |
-| `.response.txt` | Original upstream response body bytes                                     |
-
-Captures default to `./request-logger-logs/` **where you launch the logger**,
-including through npx, a global executable, or an npm script. Remembered setup
-lives separately in `~/.agent-request-logger/.agent-choice.json`.
-
-Sensitive HTTP headers are redacted in readable captures. Request and response
-bodies can still contain private code or secrets. Add your capture directory
-to the project's `.gitignore`.
+The `.md` file is written last, so its presence means the raw files are
+complete. Token-counting and health-check requests pass through without a
+capture.
 
 ## Options
 
+| Option                | Environment variable        | Default                    |
+| --------------------- | --------------------------- | -------------------------- |
+| `--port <number>`     | `PORT`                      | `8787`                     |
+| `--log-dir <path>`    | `REQUEST_LOGGER_LOG_DIR`    | `./request-logger-logs`    |
+| `--config-dir <path>` | `REQUEST_LOGGER_CONFIG_DIR` | `~/.agent-request-logger`  |
+| `--force`             |                             | Choose the setup again     |
+| `--debug`             | `REQUEST_LOGGER_DEBUG=1`    | Add stack traces to errors |
+| `-h`, `--help`        |                             | Show help                  |
+| `-v`, `--version`     |                             | Show the installed version |
+
+Flags take precedence over environment variables. Relative paths resolve from
+the directory where you start the logger, also with `npx`, a global install,
+or an npm script. Unknown flags are rejected, so a typo never runs a
+different setup.
+
+`--force` asks again but keeps the saved setup until you save a new one.
+Cancelling the wizard does not lose your previous choice.
+
+## Install options
+
 ```sh
-npx agent-request-logger --force
-npx agent-request-logger --port 9000
-npx agent-request-logger --log-dir ./captures
-npx agent-request-logger --config-dir ./preferences
-npx agent-request-logger --debug
-npx agent-request-logger --help
-npx agent-request-logger --version
+npx agent-request-logger           # run without installing
+npm i -g agent-request-logger      # install the command globally
+npm i -D agent-request-logger      # add it to a project
 ```
 
-| Option            | Purpose                                          |
-| ----------------- | ------------------------------------------------ |
-| `--force`         | Forget the saved setup and choose again          |
-| `--port`          | Change the listening port; default `8787`        |
-| `--log-dir`       | Choose where captures are written                |
-| `--config-dir`    | Choose where preferences are stored              |
-| `--debug`         | Include stack traces in contextual error reports |
-| `--help`, `-h`    | Show command help                                |
-| `--version`, `-v` | Print the installed version                      |
+In a project, add a script and pass options after `--`:
 
-With an npm script, pass options after `--`, for example
-`npm run log:agent -- --port 9000`.
+```json
+{ "scripts": { "log:agent": "agent-request-logger" } }
+```
 
-Environment alternatives are `PORT`, `REQUEST_LOGGER_LOG_DIR`, and
-`REQUEST_LOGGER_CONFIG_DIR`. CLI options take precedence. Relative paths are
-resolved from the logger's working directory.
+```sh
+npm run log:agent -- --port 9000
+```
 
-## More
+## Privacy and safety
 
-- [Agent setup and troubleshooting](docs/agents.md)
-- [Contributing and local development](CONTRIBUTING.md)
-- [Testing conventions](docs/testing.md)
-- [Release process](docs/releases.md)
+- Credential headers such as `authorization`, `x-api-key`, `cookie`, and any
+  header named like a token, secret, or key are shown as `[REDACTED]` in
+  Markdown captures.
+- Request and response **bodies are not redacted**. They can contain your
+  code, file contents, and secrets. Add the capture directory to `.gitignore`.
+- Capture files are created with owner-only permissions (`0600`, in a `0700`
+  directory).
+- Each body copy is limited to 64 MiB. Larger traffic is still forwarded in
+  full; the capture keeps the beginning and says that it is truncated.
 
-Licensed under [MIT](LICENSE).
+This is a local inspection tool, not a production telemetry proxy. See
+[SECURITY.md](https://github.com/chepetime/agent-request-logger/blob/main/SECURITY.md)
+to report a vulnerability.
+
+## Documentation
+
+- [Agent setup and troubleshooting](https://github.com/chepetime/agent-request-logger/blob/main/docs/agents.md)
+- [Architecture](https://github.com/chepetime/agent-request-logger/blob/main/docs/architecture.md)
+- [Testing](https://github.com/chepetime/agent-request-logger/blob/main/docs/testing.md)
+- [Releases](https://github.com/chepetime/agent-request-logger/blob/main/docs/releases.md)
+- [Contributing](https://github.com/chepetime/agent-request-logger/blob/main/CONTRIBUTING.md)
+- [Changelog](https://github.com/chepetime/agent-request-logger/blob/main/CHANGELOG.md)
+
+## License
+
+[MIT](https://github.com/chepetime/agent-request-logger/blob/main/LICENSE).
+Free to use, change, and share.

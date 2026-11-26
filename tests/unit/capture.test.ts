@@ -2,6 +2,7 @@ import { gzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 import {
   type Exchange,
+  isCredentialHeader,
   markdown,
   requestText,
   responseSummary,
@@ -102,6 +103,43 @@ it("redacts header names case-insensitively and preserves body content", () => {
   expect(output).not.toContain("secret");
   for (const value of ["instructions", "read", "keep ``` fences", "unrecognized", "````"])
     expect(output).toContain(value);
+});
+
+it.each([
+  ["authorization", true],
+  ["Proxy-Authorization", true],
+  ["x-api-key", true],
+  ["x-goog-api-key", true],
+  ["x-auth-token", true],
+  ["x-amz-security-token", true],
+  ["set-cookie", true],
+  ["openai-api-key", true],
+  ["anthropic-beta", false],
+  ["session_id", false],
+  ["content-type", false],
+  ["x-tokenizer-version", false],
+])("classifies %s as credential: %s", (name, hidden) => {
+  expect(isCredentialHeader(name)).toBe(hidden);
+});
+
+it("labels incomplete and truncated captures", () => {
+  const output = markdown({
+    agent: "Example",
+    protocol: "raw",
+    method: "POST",
+    url: "/v1/x",
+    status: 200,
+    headers: {},
+    request: Buffer.from("{"),
+    response: Buffer.from(""),
+    elapsedMs: 1,
+    responseIncomplete: true,
+    requestTruncated: true,
+    responseTruncated: true,
+  });
+  expect(output).toContain("closed before the upstream finished");
+  expect(output).toContain("Request body exceeded the capture limit");
+  expect(output).toContain("Response body exceeded the capture limit");
 });
 
 it("preserves malformed or unfamiliar provider payloads without breaking capture rendering", () => {

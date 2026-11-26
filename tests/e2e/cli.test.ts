@@ -117,5 +117,33 @@ it("gives CLI path flags precedence over environment variables", async () => {
   });
   await ready(running);
   expect(running.output()).toContain(path.join(directory, "chosen"));
-  expect(running.output()).toContain(`localhost:${port}`);
+  expect(running.output()).toContain(`127.0.0.1:${port}`);
+});
+it("stops cleanly on SIGINT after saving captures", async () => {
+  const config = await preference();
+  const probe = http.createServer();
+  const port = await listen(probe);
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const upstream = await listen(
+    http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"type":"response.output_text.delta","delta":"unfinished"}\n\n');
+    }),
+  );
+  const running = launch(["--port", String(port), "--config-dir", config], {
+    REQUEST_LOGGER_TEST_UPSTREAM: `http://127.0.0.1:${upstream}`,
+  });
+  await ready(running);
+  const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
+    method: "POST",
+    body: "{}",
+  });
+  await response.body!.getReader().read();
+  const exited = once(running.child, "exit");
+  running.child.kill("SIGINT");
+  expect((await exited)[0]).toBe(0);
+  const logs = path.join(directory, "request-logger-logs");
+  const capture = (await fs.readdir(logs)).find((file) => file.endsWith(".md"))!;
+  expect(await fs.readFile(path.join(logs, capture), "utf8")).toContain("unfinished");
 });

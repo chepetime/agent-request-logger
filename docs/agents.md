@@ -49,6 +49,10 @@ credentials, and model ID. Connection failures return HTTP 502 with a request
 ID; console diagnostics identify the operation and underlying cause. Use
 `--debug` to include stacks.
 
+**Agent cannot connect:** Generated commands use `127.0.0.1`, the address
+the logger listens on. If you wrote `localhost` by hand, your system may
+resolve it to IPv6 `::1`; use `127.0.0.1` instead.
+
 **Many identical requests:** An agent may be retrying an upstream failure.
 The logger forwards the responses but limits identical model captures to
 20 per two-second window. It does not retry requests itself.
@@ -60,9 +64,10 @@ summary section.
 
 ## Limits and verification
 
-This is a local inspection tool. Request and response bodies are buffered
-until a response finishes, so avoid using it as a production telemetry proxy
-or for arbitrarily large streams.
+This is a local inspection tool, not a production telemetry proxy. A copy of
+each request and response body is kept in memory until the response ends.
+Each copy stops at 64 MiB; the traffic itself is never cut, and the capture
+says when it is truncated. Ctrl+C saves open streams as incomplete captures.
 
 Pinned real-agent checks exercise six API-key routes against a local provider
 with dummy credentials. They verify routing and captures, not live provider

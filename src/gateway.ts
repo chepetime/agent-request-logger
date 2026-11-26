@@ -9,16 +9,57 @@ import type { Target } from "./targets.js";
 export interface GatewayOptions {
   target: Target;
   directory: string;
+  /** Send traffic to this origin instead of the target's provider (tests only). */
   override?: URL;
+  /** Bytes kept per request or response body for captures. Traffic is never cut. */
+  maxCaptureBytes?: number;
   onCapture?: (file: string) => void;
   onError?: (error: Error) => void;
 }
 
+/** A forwarding proxy whose capture writes can be awaited before exit. */
+export interface Gateway {
+  server: http.Server;
+  /** Resolve after every capture scheduled so far is written or has failed. */
+  flush(): Promise<void>;
+  /** Stop accepting traffic, end open streams, and wait for their captures. */
+  close(): Promise<void>;
+}
+
+export const DEFAULT_MAX_CAPTURE_BYTES = 64 * 1024 * 1024;
+
 interface ForwardingContext {
   target: Target;
   upstream: URL;
+  maxCaptureBytes: number;
+  /** Exchanges whose client response has not closed yet. */
+  open: Set<Promise<void>>;
   record: (exchange: Exchange) => void;
   report: (error: Error) => void;
+}
+
+/** Keeps a bounded copy of a body so long streams cannot exhaust memory. */
+class BodyCopy {
+  private readonly chunks: Buffer[] = [];
+  private size = 0;
+  truncated = false;
+  constructor(private readonly limit: number) {}
+  add(chunk: Buffer | string): void {
+    if (this.truncated) return;
+    const bytes = Buffer.from(chunk);
+    const room = this.limit - this.size;
+    if (bytes.length > room) {
+      this.chunks.push(bytes.subarray(0, room));
+      this.size = this.limit;
+      this.truncated = true;
+      return;
+    }
+    this.chunks.push(bytes);
+    this.size += bytes.length;
+  }
+  bytes(): Buffer {
+    return Buffer.concat(this.chunks);
+  }
 }
 
 const HOP_HEADERS = [
@@ -59,6 +100,7 @@ function isModelRequest(exchange: Exchange): boolean {
 function createRecorder(
   options: GatewayOptions,
   report: ForwardingContext["report"],
+  pending: Set<Promise<void>>,
 ): ForwardingContext["record"] {
   const recent = new Map<string, number[]>();
   const windowMs = 2000;
@@ -78,7 +120,7 @@ function createRecorder(
     // the agent, including a failing response the agent is retrying rapidly.
     if (times.length > captureLimit) return;
 
-    void saveExchange(options.directory, exchange)
+    const write: Promise<void> = saveExchange(options.directory, exchange)
       .then((file) => options.onCapture?.(file))
       .catch((error) =>
         report(
@@ -89,21 +131,22 @@ function createRecorder(
             exchange.requestId,
           ),
         ),
-      );
+      )
+      .finally(() => pending.delete(write));
+    pending.add(write);
   };
 }
 
-/** The caller must start and close the server. */
-export function createGateway(options: GatewayOptions): http.Server {
-  const report =
-    options.onError ??
-    ((error) => {
-      console.error(formatError(error, process.env.REQUEST_LOGGER_DEBUG === "1"));
-    });
+/** The caller starts the server with `server.listen` and stops it with `close`. */
+export function createGateway(options: GatewayOptions): Gateway {
+  const report = options.onError ?? ((error) => console.error(formatError(error)));
+  const pending = new Set<Promise<void>>();
   const context: ForwardingContext = {
     target: options.target,
     upstream: options.override ?? options.target.upstream,
-    record: createRecorder(options, report),
+    maxCaptureBytes: options.maxCaptureBytes ?? DEFAULT_MAX_CAPTURE_BYTES,
+    open: new Set(),
+    record: createRecorder(options, report, pending),
     report,
   };
   const server = http.createServer((incoming, outgoing) =>
@@ -113,7 +156,21 @@ export function createGateway(options: GatewayOptions): http.Server {
     // A prompt rejection allows clients with an HTTP fallback to use it.
     socket.end("HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
   });
-  return server;
+
+  const flush = async () => {
+    while (pending.size) await Promise.allSettled([...pending]);
+  };
+  const close = async () => {
+    const closed = server.listening
+      ? new Promise<void>((resolve) => server.close(() => resolve()))
+      : Promise.resolve();
+    // Ending open streams makes each exchange record its partial response.
+    server.closeAllConnections();
+    await Promise.all([...context.open]);
+    await closed;
+    await flush();
+  };
+  return { server, flush, close };
 }
 
 function forwardRequest(
@@ -129,7 +186,7 @@ function forwardRequest(
   // Ask for plain SSE, but never change the request body's content encoding.
   headers["accept-encoding"] = "identity";
 
-  const requestChunks: Buffer[] = [];
+  const requestBody = new BodyCopy(context.maxCaptureBytes);
   const send = context.upstream.protocol === "https:" ? https.request : http.request;
   let failed = false;
   let responseComplete = false;
@@ -148,9 +205,9 @@ function forwardRequest(
   );
 
   function handleResponse(response: http.IncomingMessage): void {
-    const responseChunks: Buffer[] = [];
+    const responseBody = new BodyCopy(context.maxCaptureBytes);
     outgoing.writeHead(response.statusCode ?? 502, transportHeaders(response.headers));
-    response.on("data", (chunk) => responseChunks.push(Buffer.from(chunk)));
+    response.on("data", (chunk) => responseBody.add(chunk));
     response.on("error", fail);
     const recordResponse = () => {
       if (responseComplete) return;
@@ -163,8 +220,10 @@ function forwardRequest(
         url,
         status: response.statusCode ?? 502,
         headers: incoming.headers,
-        request: Buffer.concat(requestChunks),
-        response: Buffer.concat(responseChunks),
+        request: requestBody.bytes(),
+        response: responseBody.bytes(),
+        requestTruncated: requestBody.truncated,
+        responseTruncated: responseBody.truncated,
         responseEncoding: String(response.headers["content-encoding"] ?? ""),
         elapsedMs: Math.round(performance.now() - started),
         responseIncomplete: clientClosed,
@@ -199,7 +258,7 @@ function forwardRequest(
   }
 
   upstream.on("error", fail);
-  incoming.on("data", (chunk) => requestChunks.push(Buffer.from(chunk)));
+  incoming.on("data", (chunk) => requestBody.add(chunk));
   incoming.on("error", (error) => upstream.destroy(error));
   outgoing.on("close", () => {
     if (!responseComplete) {
@@ -208,5 +267,11 @@ function forwardRequest(
       upstream.destroy();
     }
   });
+  // Registered after the handler above, so a partial capture is already
+  // scheduled when this exchange counts as settled.
+  const settled = new Promise<void>((resolve) => outgoing.once("close", resolve)).then(() => {
+    context.open.delete(settled);
+  });
+  context.open.add(settled);
   incoming.pipe(upstream);
 }

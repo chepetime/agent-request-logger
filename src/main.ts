@@ -1,40 +1,40 @@
-import fs from "node:fs/promises";
-import type http from "node:http";
+import type { StartOptions } from "./cli.js";
 import { formatError, LoggerError } from "./errors.js";
-import { createGateway } from "./gateway.js";
-import { type Locations, locations, readPreference, writePreference } from "./preferences.js";
-import { resolveTarget, type Target, upstreamUrl } from "./targets.js";
+import { createGateway, type Gateway } from "./gateway.js";
+import { readPreference, writePreference } from "./preferences.js";
+import { resolveTarget, type Target } from "./targets.js";
 import { choose } from "./wizard.js";
 
-export async function main(): Promise<void> {
-  const port = Number(process.env.PORT || 8787);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid port.");
-  const paths = locations(process.env);
-  const target = await selectTarget(paths.preferenceFile, port, process.argv.includes("--force"));
+/** Grace period for capture writes after Ctrl+C before the process gives up. */
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
+/**
+ * Choose a setup, start the proxy, and resolve after a shutdown signal once
+ * open streams are recorded. Resolves immediately when setup is cancelled.
+ */
+export async function start(options: StartOptions): Promise<void> {
+  const target = await selectTarget(options);
   if (!target) return;
 
-  const override = testUpstream();
-  const server = createGateway({
+  const gateway = createGateway({
     target,
-    directory: paths.logDir,
-    override,
+    directory: options.logDir,
+    override: options.testUpstream,
     onCapture: (file) => console.log(`Captured ${file}`),
-    onError: (error) => console.error(formatError(error, process.env.REQUEST_LOGGER_DEBUG === "1")),
+    onError: (error) => console.error(formatError(error, options.debug)),
   });
-  await listen(server, port);
-  printInstructions(target, paths, port, override);
+  await listen(gateway, options.port);
+  printInstructions(target, options);
+  await stopOnSignal(gateway);
 }
 
-async function selectTarget(
-  preferenceFile: string,
-  port: number,
-  force: boolean,
-): Promise<Target | undefined> {
-  if (force) await fs.rm(preferenceFile, { force: true });
-  const saved = force ? undefined : await readPreference(preferenceFile);
+async function selectTarget(options: StartOptions): Promise<Target | undefined> {
+  // --force ignores the saved setup but keeps it until a new one replaces it,
+  // so cancelling the wizard never loses a working configuration.
+  const saved = options.force ? undefined : await readPreference(options.preferenceFile);
   if (saved) {
     try {
-      return resolveTarget(saved, port);
+      return resolveTarget(saved, options.port);
     } catch (error) {
       console.warn(
         formatError(
@@ -48,12 +48,12 @@ async function selectTarget(
     }
   }
 
-  const selected = await choose(force || !!saved);
+  const selected = await choose(options.force || !!saved);
   if (!selected) return;
-  const target = resolveTarget(selected.choice, port);
+  const target = resolveTarget(selected.choice, options.port);
   if (selected.remember) {
     try {
-      await writePreference(preferenceFile, selected.choice);
+      await writePreference(options.preferenceFile, selected.choice);
     } catch (error) {
       // Remembering is optional: an unwritable preference directory should not
       // prevent logging with the setup the user just selected.
@@ -65,17 +65,9 @@ async function selectTarget(
   return target;
 }
 
-function testUpstream(): URL | undefined {
-  const configured = process.env.REQUEST_LOGGER_TEST_UPSTREAM;
-  if (!configured) return;
-  const url = upstreamUrl(configured);
-  if (url.pathname !== "/") throw new Error("Test upstream must be an origin without a path.");
-  return url;
-}
-
-async function listen(server: http.Server, port: number): Promise<void> {
+async function listen(gateway: Gateway, port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    server.once("error", (error) =>
+    gateway.server.once("error", (error) =>
       reject(
         new LoggerError(
           "LISTEN_FAILED",
@@ -84,15 +76,38 @@ async function listen(server: http.Server, port: number): Promise<void> {
         ),
       ),
     );
-    server.listen(port, "127.0.0.1", resolve);
+    gateway.server.listen(port, "127.0.0.1", resolve);
   });
 }
 
-function printInstructions(target: Target, paths: Locations, port: number, override?: URL): void {
+function stopOnSignal(gateway: Gateway): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = (signal: NodeJS.Signals) => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      // A second signal exits at once, even if a capture write is stuck.
+      process.once(signal, () => process.exit(130));
+      console.log("\nStopping; saving open captures…");
+      const timeout = setTimeout(() => {
+        console.error("Capture writes did not finish in time; some files may be missing.");
+        process.exit(1);
+      }, SHUTDOWN_TIMEOUT_MS);
+      timeout.unref();
+      void gateway.close().then(() => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  });
+}
+
+function printInstructions(target: Target, options: StartOptions): void {
   console.log(
-    `\n${target.name}\nListening: http://localhost:${port}\nUpstream: ${target.upstream}\nCaptures: ${paths.logDir}`,
+    `\n${target.name}\nListening: http://127.0.0.1:${options.port}\nUpstream: ${target.upstream}\nCaptures: ${options.logDir}`,
   );
-  if (override) console.log(`TEST UPSTREAM OVERRIDE: ${override}`);
+  if (options.testUpstream) console.log(`TEST UPSTREAM OVERRIDE: ${options.testUpstream}`);
   for (const file of target.files) console.log(`\nMerge into ${file.path}:\n${file.content}`);
   console.log(`\nRun in another terminal:\n\n${target.command}\n`);
   for (const hint of target.hints) console.log(hint);

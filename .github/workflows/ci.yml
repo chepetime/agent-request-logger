@@ -18,9 +18,19 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
-    name: Checks / Node LTS / Ubuntu
-    runs-on: ubuntu-latest
+    # Lint, types, unit, integration, CLI E2E, and the packed-install smoke test.
+    name: Checks / Node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # The engines floor, the current LTS line, and the pinned development version.
+        node: ["22.15.0", "24", "nvmrc"]
+        include:
+          - os: macos-latest
+            node: nvmrc
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -28,7 +38,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node != 'nvmrc' && matrix.node || '' }}
+          node-version-file: ${{ matrix.node == 'nvmrc' && '.nvmrc' || '' }}
           package-manager-cache: false
       - uses: pnpm/action-setup@v6.1.1
         with:
