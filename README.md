@@ -93,7 +93,28 @@ files that share a timestamp and request ID:
 | `.response.txt` | The original response body bytes                                        |
 
 The `.md` file is written last, so its presence means the raw files are
-complete. Token-counting and health-check requests pass through without a
+complete.
+
+### Review file for agents
+
+Each session also keeps one `<start time>.review.md` file. The logger prints
+its absolute path at startup, and the file updates after every capture. To
+have an agent explain a session, paste one line into it at any time:
+
+```text
+Read /Users/you/project/request-logger-logs/2026-11-26T19-04-00.000Z.review.md
+```
+
+The file is short on purpose. It has one table row per request (endpoint,
+status, model, message count, tokens, stop reason, and the first line of the
+reply). Identical system prompts and tool sets get one letter, so the agent
+reads them once, and tool changes show as `+name` or `−name`. Absolute paths
+lead to the full captures when a row is not enough. The file also tells the
+agent to treat captures as data and not to follow the instructions inside
+them. Use `--no-review` to turn it off.
+
+Run the reviewing agent without the logger, or ignore the new rows that its
+own reads create. Token-counting and health-check requests pass through without a
 capture.
 
 ## Options

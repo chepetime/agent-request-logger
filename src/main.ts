@@ -2,6 +2,7 @@ import type { StartOptions } from "./cli.js";
 import { formatError, LoggerError } from "./errors.js";
 import { createGateway, type Gateway } from "./gateway.js";
 import { readPreference, writePreference } from "./preferences.js";
+import { ReviewSession } from "./review.js";
 import { resolveTarget, type Target } from "./targets.js";
 import { choose } from "./wizard.js";
 
@@ -16,16 +17,26 @@ export async function start(options: StartOptions): Promise<void> {
   const target = await selectTarget(options);
   if (!target) return;
 
+  const report = (error: unknown) => console.error(formatError(error, options.debug));
+  const review = options.review
+    ? new ReviewSession(options.logDir, target.name, (error) =>
+        report(new LoggerError("CAPTURE_FAILED", "Could not update the review file.", error)),
+      )
+    : undefined;
   const gateway = createGateway({
     target,
     directory: options.logDir,
     override: options.testUpstream,
-    onCapture: (file) => console.log(`Captured ${file}`),
-    onError: (error) => console.error(formatError(error, options.debug)),
+    onCapture: (file, exchange) => {
+      console.log(`Captured ${file}`);
+      void review?.add(exchange, file);
+    },
+    onError: report,
   });
   await listen(gateway, options.port);
-  printInstructions(target, options);
-  await stopOnSignal(gateway);
+  await review?.start();
+  printInstructions(target, options, review?.file);
+  await stopOnSignal(gateway, review);
 }
 
 async function selectTarget(options: StartOptions): Promise<Target | undefined> {
@@ -80,7 +91,7 @@ async function listen(gateway: Gateway, port: number): Promise<void> {
   });
 }
 
-function stopOnSignal(gateway: Gateway): Promise<void> {
+function stopOnSignal(gateway: Gateway, review?: ReviewSession): Promise<void> {
   return new Promise((resolve) => {
     const stop = (signal: NodeJS.Signals) => {
       process.off("SIGINT", stop);
@@ -93,20 +104,29 @@ function stopOnSignal(gateway: Gateway): Promise<void> {
         process.exit(1);
       }, SHUTDOWN_TIMEOUT_MS);
       timeout.unref();
-      void gateway.close().then(() => {
-        clearTimeout(timeout);
-        resolve();
-      });
+      void gateway
+        .close()
+        .then(() => review?.flush())
+        .then(() => {
+          clearTimeout(timeout);
+          if (review) console.log(`Review: ${review.file}`);
+          resolve();
+        });
     };
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
   });
 }
 
-function printInstructions(target: Target, options: StartOptions): void {
+function printInstructions(target: Target, options: StartOptions, reviewFile?: string): void {
   console.log(
     `\n${target.name}\nListening: http://127.0.0.1:${options.port}\nUpstream: ${target.upstream}\nCaptures: ${options.logDir}`,
   );
+  if (reviewFile) {
+    console.log(
+      `Review: ${reviewFile}\nUpdates after each capture. Ask an agent: "Read ${reviewFile}"`,
+    );
+  }
   if (options.testUpstream) console.log(`TEST UPSTREAM OVERRIDE: ${options.testUpstream}`);
   for (const file of target.files) console.log(`\nMerge into ${file.path}:\n${file.content}`);
   console.log(`\nRun in another terminal:\n\n${target.command}\n`);

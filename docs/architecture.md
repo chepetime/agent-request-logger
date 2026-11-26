@@ -17,6 +17,9 @@ flowchart TD
   wizard --> discovery[model-discovery.ts]
   wizard --> targets
   targets --> setup[agent-setup.ts]
+  main --> review[review.ts]
+  review --> capture
+  review --> decoder
   gateway --> capture[capture.ts]
   capture --> decoder[response-decoder.ts]
   cli --> errors[errors.ts]
@@ -24,20 +27,21 @@ flowchart TD
   gateway --> errors
 ```
 
-| Module                        | Responsibility                                                              |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `bin/agent-request-logger.js` | Four-line launcher. Imports the compiled CLI and sets the exit code.        |
-| `src/cli.ts`                  | The only reader of argv and environment. Produces typed `StartOptions`.     |
-| `src/main.ts`                 | Setup selection, server start, printed instructions, and graceful shutdown. |
-| `src/wizard.ts`               | Interactive questions and cancellation.                                     |
-| `src/preferences.ts`          | Launch-relative paths and the remembered choice (atomic writes).            |
-| `src/targets.ts`              | Agent and provider catalogue, URL validation, and route resolution.         |
-| `src/agent-setup.ts`          | Launch commands and configuration snippets for each agent.                  |
-| `src/model-discovery.ts`      | Optional `/v1/models` listing for custom providers.                         |
-| `src/gateway.ts`              | HTTP forwarding, stream lifecycle, bounded body copies, capture scheduling. |
-| `src/capture.ts`              | Markdown rendering, header redaction, and raw file persistence.             |
-| `src/response-decoder.ts`     | Anthropic and OpenAI response interpretation (SSE and JSON).                |
-| `src/errors.ts`               | Error codes, cause chains, and diagnostic formatting.                       |
+| Module                        | Responsibility                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `bin/agent-request-logger.js` | Four-line launcher. Imports the compiled CLI and sets the exit code.            |
+| `src/cli.ts`                  | The only reader of argv and environment. Produces typed `StartOptions`.         |
+| `src/main.ts`                 | Setup selection, server start, printed instructions, and graceful shutdown.     |
+| `src/wizard.ts`               | Interactive questions and cancellation.                                         |
+| `src/preferences.ts`          | Launch-relative paths and the remembered choice (atomic writes).                |
+| `src/targets.ts`              | Agent and provider catalogue, URL validation, and route resolution.             |
+| `src/agent-setup.ts`          | Launch commands and configuration snippets for each agent.                      |
+| `src/model-discovery.ts`      | Optional `/v1/models` listing for custom providers.                             |
+| `src/gateway.ts`              | HTTP forwarding, stream lifecycle, bounded body copies, capture scheduling.     |
+| `src/review.ts`               | The session review index: per-request summaries, prompt deduplication, framing. |
+| `src/capture.ts`              | Markdown rendering, header redaction, and raw file persistence.                 |
+| `src/response-decoder.ts`     | Anthropic and OpenAI response interpretation (SSE and JSON).                    |
+| `src/errors.ts`               | Error codes, cause chains, and diagnostic formatting.                           |
 
 ## Request lifecycle
 
@@ -56,9 +60,12 @@ flowchart TD
 6. When the response ends, or the client disconnects, the exchange is
    recorded once. Model requests (`/messages`, `/responses`,
    `/chat/completions`) are written to disk; other traffic is forwarded only.
-7. On SIGINT or SIGTERM, `close()` stops new connections, ends open streams
+7. After each capture write, `onCapture(file, exchange)` lets `main.ts` add a
+   summary row to the session's `ReviewSession`, which rewrites the review
+   file atomically. Writes are queued, so rows are never lost to a race.
+8. On SIGINT or SIGTERM, `close()` stops new connections, ends open streams
    (which records their partial responses), and waits for every capture
-   write. A second signal exits at once.
+   write and the last review update. A second signal exits at once.
 
 ## Invariants
 
@@ -78,6 +85,9 @@ These rules are covered by tests. Keep them when you change the code.
   saved file, and preference writes use write-then-rename.
 - **The configured host cannot be changed by a request.** Incoming paths are
   joined to the base path; `//other.host` stays a path.
+- **The review file stays small and safe to read.** It never contains a full
+  prompt. It frames captures as data, so a reviewing agent does not follow
+  instructions found in them.
 - **Retries cannot flood the disk.** Identical model captures are limited to
   20 in a two-second window. Every response is still forwarded.
 

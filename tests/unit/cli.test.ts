@@ -15,6 +15,7 @@ it("uses launch-relative defaults when nothing is configured", () => {
     preferenceFile: "/home/person/.agent-request-logger/.agent-choice.json",
     force: false,
     debug: false,
+    review: true,
     testUpstream: undefined,
   });
 });
@@ -33,6 +34,10 @@ it("gives flags precedence over environment variables, and ignores empty values"
   });
   expect(start({ env: { PORT: "" } }).port).toBe(8787);
   expect(start({ env: { REQUEST_LOGGER_DEBUG: "1" } }).debug).toBe(true);
+});
+
+it("turns the review file off with --no-review", () => {
+  expect(start({ argv: ["--no-review"] }).review).toBe(false);
 });
 
 it.each(["0", "65536", "80.5", "1e3", "http"])("rejects port %s", (port) => {

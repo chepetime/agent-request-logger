@@ -8,6 +8,8 @@ import type { Protocol } from "./targets.js";
 
 export interface Exchange {
   requestId?: string;
+  /** When the agent's request reached the logger. */
+  startedAt?: Date;
   responseEncoding?: string;
   agent: string;
   protocol: Protocol;

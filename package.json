@@ -1,6 +1,6 @@
 {
   "name": "agent-request-logger",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "See the system prompts, tools, messages, and responses your coding agent sends over HTTP.",
   "type": "module",
   "license": "MIT",
