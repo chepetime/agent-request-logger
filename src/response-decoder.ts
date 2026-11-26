@@ -9,12 +9,18 @@ interface Conversation {
   reasoning: string;
   tools: Map<string, ToolCall>;
   usage: unknown[];
+  stopReason?: string;
 }
 export interface DecodedResponse {
   text: string;
   reasoning: string;
   tools: ToolCall[];
   usage: unknown[];
+  /** Why the model stopped, as the provider reported it (end_turn, stop, completed…). */
+  stopReason?: string;
+  /** Token totals across all usage objects; absent when the provider sent none. */
+  inputTokens?: number;
+  outputTokens?: number;
   /** Parsed payloads are retained when no known text or tool shape was found. */
   payloads: unknown[];
 }
@@ -71,8 +77,28 @@ export function decodeResponse(text: string, protocol: Protocol): DecodedRespons
     reasoning: conversation.reasoning,
     tools: [...conversation.tools.values()],
     usage: conversation.usage,
+    stopReason: conversation.stopReason,
+    inputTokens: tokenCount(conversation.usage, ["input_tokens", "prompt_tokens"]),
+    outputTokens: tokenCount(conversation.usage, ["output_tokens", "completion_tokens"]),
     payloads,
   };
+}
+
+// Streams report usage in several events (Anthropic: input at the start,
+// output at the end), and later events repeat or grow earlier counts.
+function tokenCount(usage: unknown[], names: string[]): number | undefined {
+  let largest: number | undefined;
+  for (const entry of usage) {
+    for (const name of names) {
+      const value = (entry as Record<string, unknown> | null)?.[name];
+      if (typeof value === "number" && (largest === undefined || value > largest)) largest = value;
+    }
+  }
+  return largest;
+}
+
+function setStop(result: Conversation, value: unknown): void {
+  if (typeof value === "string" && value) result.stopReason = value;
 }
 
 function appendUsage(result: Conversation, event: any): void {
@@ -82,6 +108,7 @@ function appendUsage(result: Conversation, event: any): void {
 }
 
 function appendAnthropic(result: Conversation, event: any): void {
+  setStop(result, event.delta?.stop_reason ?? event.stop_reason);
   if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
     result.tools.set(String(event.index), { name: event.content_block.name, arguments: "" });
   }
@@ -118,6 +145,13 @@ function appendOpenAI(result: Conversation, event: any, streaming: boolean): voi
 
   for (const choice of array(event.choices)) {
     appendChatMessage(result, choice?.delta ?? choice?.message);
+    setStop(result, choice?.finish_reason);
+  }
+  if (event.type === "response.completed" || event.type === "response.incomplete") {
+    setStop(result, event.response?.incomplete_details?.reason ?? event.response?.status);
+  }
+  if (!streaming && event.object === "response") {
+    setStop(result, event.incomplete_details?.reason ?? event.status);
   }
 
   // A completed stream repeats output items in its final response event.

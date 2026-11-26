@@ -94,8 +94,10 @@ try {
   // The .md file is written last, so its presence means all three files exist.
   const listed = () => (fs.existsSync(logs) ? fs.readdirSync(logs) : []);
   for (let i = 0; i < 50 && !listed().some((f) => f.endsWith(".md")); i++) await delay(100);
-  const files = listed();
+  const files = listed().filter((f) => !f.endsWith(".review.md"));
   assert.equal(files.length, 3);
+  const review = listed().find((f) => f.endsWith(".review.md"));
+  assert(review, "The session review file must exist");
   const capture = fs.readFileSync(
     path.join(
       logs,
@@ -106,8 +108,19 @@ try {
   assert(capture.includes("package-smoke-prompt"));
   assert(!capture.includes("smoke-secret"));
   assert(capture.includes("[REDACTED]"));
+  // The review index updates after the capture; wait for its row.
+  const reviewText = () => fs.readFileSync(path.join(logs, review), "utf8");
+  for (let i = 0; i < 50 && !reviewText().includes("## Files"); i++) await delay(100);
+  assert(
+    reviewText().includes(
+      path.join(
+        logs,
+        files.find((f) => f.endsWith(".md")),
+      ),
+    ),
+  );
   console.log(
-    "Packed CLI: clean install, executable, options, forwarding, redaction, launch-directory captures passed.",
+    "Packed CLI: clean install, executable, options, forwarding, redaction, launch-directory captures, review index passed.",
   );
 } finally {
   if (child && child.exitCode === null) {

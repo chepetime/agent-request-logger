@@ -26,6 +26,9 @@ so development tooling does not become a consumer requirement.
   arguments, reasoning, usage, compression, redaction, and unfamiliar payloads.
 - **CLI parsing:** defaults, flag and environment precedence, port
   validation, rejection of unknown flags, and the test upstream rule.
+- **Review file:** summaries for Anthropic and OpenAI responses, prompt
+  deduplication, tool changes, escaped table cells, data framing, and the
+  empty session.
 - **Redaction:** a table of header names that must and must not be hidden.
 - **Paths and errors:** working-directory policy, fixed diagnostic fields,
   cause chains, and optional debug stacks.
@@ -36,7 +39,8 @@ so development tooling does not become a consumer requirement.
 - **Preferences and commands:** saved data round-trips through the filesystem;
   model names remain literal when a shell interprets a generated command.
 - **CLI E2E:** options, environment precedence, exit codes, startup errors,
-  and a clean SIGINT shutdown that saves an open stream.
+  a clean SIGINT shutdown that saves an open stream and its review row, and
+  `--no-review`.
 - **Package E2E:** a packed tarball installs and logs traffic from an unrelated
   working directory, verifying that captures default to that directory.
 - **Compatibility:** six pinned API-key routes prove that external agents

@@ -12,6 +12,8 @@ export interface StartOptions {
   preferenceFile: string;
   force: boolean;
   debug: boolean;
+  /** Keep a session review file with an index of every capture. */
+  review: boolean;
   /** Test-only origin that replaces the real provider. */
   testUpstream?: URL;
 }
@@ -29,6 +31,7 @@ Inspect the HTTP requests your coding agent sends to its model provider.
   --log-dir <path>     Capture directory (default: ./request-logger-logs)
   --config-dir <path>  Preferences directory (default: ~/.agent-request-logger)
   --force              Choose your agent and provider again
+  --no-review          Do not write the session review file
   --debug              Include stack traces in error reports
   -h, --help           Show this help
   -v, --version        Show the version
@@ -49,11 +52,13 @@ export function parseCommand({ argv, env, cwd, home }: Environment): Command {
     args: argv,
     strict: true,
     allowPositionals: false,
+    allowNegative: true,
     options: {
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
       debug: { type: "boolean" },
       force: { type: "boolean" },
+      review: { type: "boolean", default: true },
       port: { type: "string" },
       "log-dir": { type: "string" },
       "config-dir": { type: "string" },
@@ -77,6 +82,7 @@ export function parseCommand({ argv, env, cwd, home }: Environment): Command {
       ...paths,
       force: values.force ?? false,
       debug: (values.debug ?? false) || env.REQUEST_LOGGER_DEBUG === "1",
+      review: values.review ?? true,
       testUpstream: testUpstream(env.REQUEST_LOGGER_TEST_UPSTREAM),
     },
   };

@@ -143,7 +143,26 @@ it("stops cleanly on SIGINT after saving captures", async () => {
   const exited = once(running.child, "exit");
   running.child.kill("SIGINT");
   expect((await exited)[0]).toBe(0);
-  const logs = path.join(directory, "request-logger-logs");
-  const capture = (await fs.readdir(logs)).find((file) => file.endsWith(".md"))!;
+  // realpath: macOS reports the temporary directory through the /private link.
+  const logs = await fs.realpath(path.join(directory, "request-logger-logs"));
+  const files = await fs.readdir(logs);
+  const capture = files.find((file) => file.endsWith(".md") && !file.endsWith(".review.md"))!;
   expect(await fs.readFile(path.join(logs, capture), "utf8")).toContain("unfinished");
+  // The review path is printed at startup and again at shutdown, and lists the capture.
+  const review = path.join(logs, files.find((file) => file.endsWith(".review.md"))!);
+  expect(running.output().split(`Review: ${review}`)).toHaveLength(3);
+  const index = await fs.readFile(review, "utf8");
+  expect(index).toContain(path.join(logs, capture));
+  expect(index).toContain("incomplete");
+});
+
+it("writes no review file with --no-review", async () => {
+  const config = await preference();
+  const probe = http.createServer();
+  const port = await listen(probe);
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const running = launch(["--port", String(port), "--config-dir", config, "--no-review"]);
+  await ready(running);
+  expect(running.output()).not.toContain("Review:");
+  await expect(fs.readdir(path.join(directory, "request-logger-logs"))).rejects.toThrow();
 });

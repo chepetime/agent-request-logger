@@ -13,7 +13,8 @@ export interface GatewayOptions {
   override?: URL;
   /** Bytes kept per request or response body for captures. Traffic is never cut. */
   maxCaptureBytes?: number;
-  onCapture?: (file: string) => void;
+  /** Called after a capture's files are written, with the exchange they describe. */
+  onCapture?: (file: string, exchange: Exchange) => void;
   onError?: (error: Error) => void;
 }
 
@@ -121,7 +122,7 @@ function createRecorder(
     if (times.length > captureLimit) return;
 
     const write: Promise<void> = saveExchange(options.directory, exchange)
-      .then((file) => options.onCapture?.(file))
+      .then((file) => options.onCapture?.(file, exchange))
       .catch((error) =>
         report(
           new LoggerError(
@@ -179,6 +180,7 @@ function forwardRequest(
   context: ForwardingContext,
 ): void {
   const started = performance.now();
+  const startedAt = new Date();
   const requestId = randomUUID();
   const method = incoming.method ?? "GET";
   const url = requestPath(context.target.upstream, incoming.url ?? "/");
@@ -214,6 +216,7 @@ function forwardRequest(
       responseComplete = true;
       context.record({
         requestId,
+        startedAt,
         agent: context.target.name,
         protocol: context.target.protocol,
         method,

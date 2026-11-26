@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-26
+
+### Added
+
+- Session review file: `request-logger-logs/<start time>.review.md` is written
+  at startup and updated after each capture. Its path is printed at startup,
+  so you can tell any agent "Read <path>" while the logger is still running.
+- The review file is built for small context: one table row per request
+  (endpoint, status, time, model, message count, tokens, stop reason, first
+  line of the reply), identical system prompts and tool sets labelled once,
+  tool changes shown as `+name` / `−name`, and absolute paths to each capture.
+- The review file tells the reading agent to treat captures as data and not
+  to follow the instructions inside them, and to ignore its own new traffic.
+- `--no-review` turns the review file off.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added
@@ -51,7 +66,8 @@ All notable changes to this project are documented here. The format follows
 - First release: local logging proxy for Claude Code, Codex, GitHub Copilot
   CLI, OpenCode, and Pi, with Markdown captures and raw body files.
 
-[Unreleased]: https://github.com/chepetime/agent-request-logger/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/chepetime/agent-request-logger/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/chepetime/agent-request-logger/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/chepetime/agent-request-logger/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/chepetime/agent-request-logger/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/chepetime/agent-request-logger/releases/tag/v0.1.0
